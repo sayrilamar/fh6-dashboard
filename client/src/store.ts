@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { Frame, RecordingStatus, SessionSummary } from './types';
+import type { Frame, RecordingStatus, SessionSummary, Telemetry } from './types';
 
 // ---- WebSocket URL --------------------------------------------------------
 // Same-origin in production (server serves the built client). In Vite dev the
@@ -46,6 +46,104 @@ const ggEnv = new Float32Array(GG_BINS);
 let ggPeakLat = 0;
 let ggPeakAccel = 0;
 let ggPeakBrake = 0;
+
+// ---- Live lap delta -------------------------------------------------------
+// A real delta needs a REFERENCE LAP, not just a best-lap time: you compare the
+// clock at the point on track you're at now against the clock the best lap had
+// at that same point. So trace (distance-into-lap -> lap time) for every lap,
+// and promote the fastest completed lap to the reference. Without this you can
+// only compare totals, which tells you nothing until the lap is already gone.
+const LAP_SAMPLE_M = 10; // one reference sample per ~10 m of track
+
+interface LapSample { dist: number; time: number }
+
+let lapTrace: LapSample[] = [];          // lap in progress
+let refTrace: LapSample[] | null = null; // fastest completed lap this session
+let refLapTime = 0;
+let lapStartDist = 0;
+let prevLapNumber = -1;
+let liveDelta: number | null = null;
+
+function resetLapDelta() {
+  lapTrace = [];
+  refTrace = null;
+  refLapTime = 0;
+  lapStartDist = 0;
+  prevLapNumber = -1;
+  liveDelta = null;
+}
+
+// Lap time the reference lap had at this distance into the lap (interpolated).
+// null past the end of the reference — nothing honest to compare against.
+function refTimeAt(dist: number): number | null {
+  const r = refTrace;
+  if (!r || r.length < 2) return null;
+  if (dist <= r[0].dist) return r[0].time;
+  // Driven further than the reference lap was long (an off, a wider line): the
+  // honest comparison is against the reference's finishing time.
+  if (dist >= r[r.length - 1].dist) return r[r.length - 1].time;
+  let lo = 0;
+  let hi = r.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (r[mid].dist <= dist) lo = mid;
+    else hi = mid;
+  }
+  const a = r[lo];
+  const b = r[hi];
+  const span = b.dist - a.dist;
+  return span > 0 ? a.time + ((dist - a.dist) / span) * (b.time - a.time) : a.time;
+}
+
+function updateLapDelta(t: Telemetry) {
+  if (!t.isRaceOn) return;
+
+  if (t.lapNumber !== prevLapNumber) {
+    const completed = prevLapNumber >= 0 && t.lapNumber > prevLapNumber;
+    // Promote the lap that just ended if it's the quickest one we traced whole.
+    if (completed && t.lastLap > 0 && lapTrace.length > 2 && (refTrace == null || t.lastLap < refLapTime)) {
+      // Close the trace on the start-finish line itself, so the delta stays live
+      // through the last metres of the lap instead of running off the end of the
+      // samples (which fall up to LAP_SAMPLE_M short of the line).
+      const lineDist = t.distanceTraveled - lapStartDist;
+      if (lineDist > lapTrace[lapTrace.length - 1].dist) lapTrace.push({ dist: lineDist, time: t.lastLap });
+      refTrace = lapTrace;
+      refLapTime = t.lastLap;
+    }
+    // Counter went backwards / restarted = a different event. The old reference
+    // belongs to another track, so it must not survive into this one.
+    if (!completed) { refTrace = null; refLapTime = 0; }
+    lapTrace = [];
+    lapStartDist = t.distanceTraveled;
+    prevLapNumber = t.lapNumber;
+    liveDelta = null;
+    return;
+  }
+
+  const dist = t.distanceTraveled - lapStartDist;
+  // Rewind / reset-to-track moves the car backwards: re-anchor and drop the
+  // partial trace rather than record a lap that folds back on itself.
+  if (dist < 0) {
+    lapStartDist = t.distanceTraveled;
+    lapTrace = [];
+    liveDelta = null;
+    return;
+  }
+
+  const last = lapTrace[lapTrace.length - 1];
+  if (t.currentLap > 0 && (!last || dist - last.dist >= LAP_SAMPLE_M)) {
+    lapTrace.push({ dist, time: t.currentLap });
+  }
+
+  const ref = refTimeAt(dist);
+  liveDelta = ref == null || t.currentLap <= 0 ? null : t.currentLap - ref;
+}
+
+// Live gap to the best lap at this point on track. `delta` is null until a full
+// reference lap exists (i.e. until lap 1 is in the books).
+export function getLapDelta(): { delta: number | null; refLapTime: number | null } {
+  return { delta: liveDelta, refLapTime: refTrace ? refLapTime : null };
+}
 
 function ggClean(f: Frame): boolean {
   const t = f.t;
@@ -111,6 +209,7 @@ function ingest(frame: Frame) {
     prevGear = null;
     ggEnv.fill(0);
     ggPeakLat = ggPeakAccel = ggPeakBrake = 0;
+    resetLapDelta();
   }
 
   // g-g envelope: bin the clean accel vector by angle, keep the max radius.
@@ -124,6 +223,8 @@ function ingest(frame: Frame) {
     if (lon > 0) ggPeakAccel = Math.max(ggPeakAccel, lon);
     else ggPeakBrake = Math.max(ggPeakBrake, -lon);
   }
+
+  updateLapDelta(t);
 
   // Capture the rpm just before each upshift (ignore downshifts / N / R).
   if (t.isRaceOn) {

@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getLatest, useTick } from '../store';
+import { getLapDelta, getLatest, useTick } from '../store';
 import { fmt, lapTime } from '../format';
 
 export function Laps() {
@@ -7,7 +7,10 @@ export function Laps() {
   const t = getLatest()?.t;
   const cur = t?.currentLap ?? 0;
   const best = t?.bestLap ?? 0;
-  const delta = best > 0 && cur > 0 ? cur - best : null;
+  // Gap to the best lap AT THIS POINT ON TRACK. Comparing the running lap clock
+  // to the best lap's total is not a delta — it just counts up to the best time,
+  // reading "ahead" for the whole lap and only turning red once the lap is lost.
+  const { delta, refLapTime } = getLapDelta();
 
   return (
     <Panel title="Lap Timing" span={3}>
@@ -32,6 +35,11 @@ export function Laps() {
         <span className="v">{fmt((t?.distanceTraveled ?? 0) / 1609.344, 2)} mi</span>
         <span className="k">Fuel</span>
         <span className="v">{fmt((t?.fuel ?? 0) * 100)}%</span>
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
+        {refLapTime != null
+          ? `delta vs best lap (${lapTime(refLapTime)}) at this point on track`
+          : 'delta available once a reference lap is completed'}
       </div>
     </Panel>
   );
