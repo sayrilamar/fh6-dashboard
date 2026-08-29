@@ -47,8 +47,31 @@ export function bracketFor(
   const ch = CH.get(channel);
   const step = ch?.step ?? 1;
   const bounded = ch?.min != null && ch?.max != null;
-  let lo: number | null = bounded ? ch!.min! : null;
-  let hi: number | null = bounded ? ch!.max! : null;
+  const railLo: number | null = bounded ? ch!.min! : null;
+  const railHi: number | null = bounded ? ch!.max! : null;
+  let lo: number | null = railLo;
+  let hi: number | null = railHi;
+
+  // Fold one observation into the bracket: at value `v` the advice pointed `d`.
+  //
+  // The two bounds can CONTRADICT each other. "RAISE at 50" says the optimum is above
+  // 50; "LOWER at 30" says it is below 30. Both cannot hold, and the advice sign really
+  // does flip run to run — this module exists because the symptom rates are that noisy
+  // (0.8–17.9 at a completely fixed setting). Accumulating both with max()/min() left
+  // lo ABOVE hi, which silently skipped the bisection branch and let a stale bound sit
+  // on the wrong side of the current value: the search then stepped AGAINST its own
+  // advice (advice "LOWER from 45" returned 48). Observations arrive oldest-first, so
+  // a contradicted bound is the stale one — drop it back to the rail and keep the newer
+  // evidence. Losing a bound costs a run of search; inverting the step costs the tune.
+  const observe = (v: number, d: number) => {
+    if (d > 0) {                                        // advised RAISE ⇒ optimum > v
+      if (hi != null && hi <= v) hi = railHi;
+      lo = lo == null ? v : Math.max(lo, v);
+    } else {                                            // advised LOWER ⇒ optimum < v
+      if (lo != null && lo >= v) lo = railLo;
+      hi = hi == null ? v : Math.min(hi, v);
+    }
+  };
 
   // Every past run narrows the bracket: the advice direction at that run tells us which
   // side of that value the optimum lies on.
@@ -60,15 +83,11 @@ export function bracketFor(
     const v = run.meta!.tune![channel];
     const d = deltaOf(run);
     if (d == null || d === 0) continue;
-    if (d > 0) lo = lo == null ? v : Math.max(lo, v);   // advised RAISE ⇒ optimum > v
-    else hi = hi == null ? v : Math.min(hi, v);          // advised LOWER ⇒ optimum < v
+    observe(v, d);
   }
 
-  // Fold in this run's advice about the CURRENT value.
-  if (current != null && direction !== 0) {
-    if (direction > 0) lo = lo == null ? current : Math.max(lo, current);
-    else hi = hi == null ? current : Math.min(hi, current);
-  }
+  // Fold in this run's advice about the CURRENT value — the newest evidence there is.
+  if (current != null && direction !== 0) observe(current, direction);
 
   // No current value yet — tell the driver how to open the search.
   if (current == null) {
@@ -105,6 +124,16 @@ export function bracketFor(
       next = snap(current * 2, step);
       rationale = `No upper bound known yet — doubling ${current} to open the search. If that overshoots, the next step comes back halfway.`;
     }
+  }
+
+  // INVARIANT: never step against this run's own advice. The bracket logic above
+  // keeps lo/hi straddling `current`, so the midpoint already lands on the right
+  // side — but a channel pinned at a rail can still produce a wrong-way midpoint.
+  // Fall back to a single step the advised way and let the rail clamp below decide
+  // whether there is any room left to move.
+  if (direction !== 0 && (direction > 0 ? next < current : next > current)) {
+    next = snap(current + (direction > 0 ? step : -step), step);
+    rationale = `Past runs disagree about which side of ${current} the optimum is on, so this takes one ${step}-step ${direction > 0 ? 'up' : 'down'} rather than a step against the advice.`;
   }
 
   if (ch?.min != null) next = Math.max(ch.min, next);
