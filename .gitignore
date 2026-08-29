@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Build output
+client/dist/
+client/tsconfig.tsbuildinfo
+
+# Recorded telemetry sessions (large, machine-local)
+sessions/
+
+# Logs & environment
+*.log
+.env
+.env.*
+
+# macOS
+.DS_Store

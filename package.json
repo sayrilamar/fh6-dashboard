@@ -1,0 +1,22 @@
+{
+  "name": "fh6-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Forza Horizon 6 race-engineer telemetry dashboard (UDP Data Out -> WebSocket -> web UI)",
+  "type": "module",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "npm --prefix client run dev",
+    "dev": "concurrently -n server,client -c cyan,magenta \"npm run server\" \"npm run client\"",
+    "sim": "node server/simulator.js",
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "start": "node server/index.js",
+    "setup": "npm install && npm --prefix client install"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

@@ -1,0 +1,571 @@
+// Change planner — decides the ONE thing to change next.
+//
+// WHY: with every section recommending independently, a single run could move 10
+// channels at once. That is fatal for two reasons:
+//   1. You cannot attribute the result to any one change, so the learned step size
+//      (tune.ts) is estimated from a confounded experiment and is meaningless.
+//   2. Five levers all aimed at the same symptom over-correct wildly, and each one
+//      marches to its in-game rail while the symptom never improves.
+// Measured on a real 12-run session: up to 10 channels moved per run, rear camber ran
+// -1.4°→-4.2°, front ARB 34→65 (rail), rear ARB 26→1 (rail), rear toe →1.0 (rail), and
+// the car ended 2.6 s SLOWER than the untouched baseline.
+//
+// So: one lever per run, chosen by a symptom playbook (primary lever first), skipping
+// levers that are at a rail or have been proven not to move the symptom — plus a hard
+// NO CLOCK: lap/track time is never consulted. On a controller the run-to-run variance
+// from a distraction or a missed brake point exceeds the effect of a tuning change, so
+// every verdict here comes from measured car behaviour (SYMPTOM_METRIC) instead.
+
+import type { SessionSummary, SessionAnalytics } from './types';
+import { CHANNELS, isGearRatioKey } from './tune';
+import { bracketFor, usesBisection, runsRemaining } from './bisect';
+import type { Bracket } from './bisect';
+
+const CH = new Map(CHANNELS.map((c) => [c.key, c]));
+
+export interface Candidate {
+  channel: string;
+  label: string;
+  delta: number;          // recommended change (abs units, or % for pct channels)
+  why: string;
+  symptom: string;        // symptom id this lever targets
+  severity: number;       // 0..1, how bad that symptom is this run
+}
+
+export interface PlannedChange extends Candidate {
+  from: number | null;
+  to: number | null;
+  rank: number;
+  blocked?: string;
+  // 'symptom'  — the car is showing this problem NOW
+  // 'recovery' — no live symptom; past A/B data says an earlier value measured better
+  kind?: 'symptom' | 'recovery';
+  bracket?: Bracket;        // bisection search state (not used for gearing)
+  runsLeft?: number | null; // runs still needed to reach this channel's step resolution
+}
+
+// A completed A/B test: a pair of comparable runs where exactly ONE channel moved, so
+// the lap-time difference is genuinely attributable to that change.
+export interface Experiment {
+  channel: string;
+  from: number;
+  to: number;
+  dir: 1 | -1;
+  review?: ChangeReview | null;   // symptom-based verdict, when the channel has a metric
+}
+
+export interface Plan {
+  primary: PlannedChange | null;
+  queued: PlannedChange[];
+  blocked: PlannedChange[];
+  dominant: string | null;
+  experiments: Experiment[];
+  lastChange: ChangeReview | null;   // did the previous single change actually work?
+  quality: RunQuality | null;        // enough clean data to trust the symptom readings?
+  status: TuneStatus;                // done, still tuning, or out of levers?
+}
+
+// Ordered levers per symptom: primary first, last resort last. A symptom is only ever
+// attacked with ONE lever at a time, and we walk down this list as levers get used up.
+const PLAYBOOK: Record<string, string[]> = {
+  trailBrakeOversteer: ['balance', 'pressure', 'rearDecel', 'rearToe', 'rearARB', 'rearRebound'],
+  powerOversteer: ['rearAccel', 'rearToe', 'rearARB', 'rearSpring', 'rearCamber'],
+  gripOversteer: ['rearARB', 'rearCamber', 'rearAero', 'rearSpring'],
+  understeer: ['frontARB', 'frontCamber', 'caster', 'frontToe', 'frontSpring', 'frontAero'],
+  frontLock: ['balance', 'pressure'],
+  tireTemp: ['frontPsi', 'rearPsi'],
+  bottoming: ['frontHeight', 'rearHeight', 'frontBump', 'rearBump'],
+  aeroBalance: ['frontAero', 'rearAero'],
+  launch: ['gear1'],
+};
+
+// ---------------------------------------------------------------------------
+// Judging whether a change WORKED.
+//
+// Lap time alone is a bad verdict: a lock-up, a missed apex or traffic can cost more
+// than any tuning change gains, so "slower ⇒ bad change" is often wrong. The reliable
+// test is whether the change moved THE SYMPTOM IT WAS AIMED AT — that's directly
+// attributable and far less noisy. Lap time then acts as confirmation, not the judge.
+//
+// Each channel maps to the measurement it is supposed to improve (lower = better).
+type Metric = (a: SessionAnalytics) => number | null;
+const rearLoose: Metric = (a) => (a.handling ? Math.max(a.handling.slideCausePer1k.power, a.handling.slideCausePer1k.grip) : null);
+const trailRate: Metric = (a) => a.handling?.slideCausePer1k.trailBrake ?? null;
+const powerRate: Metric = (a) => a.handling?.slideCausePer1k.power ?? null;
+const usRate: Metric = (a) => (a.handling ? (a.handling.understeerFrames / Math.max(1, a.handling.cornerFrames)) * 1000 : null);
+// Per-END temp error. A shared max() across both ends could not attribute a FRONT
+// pressure change to the front: fixing the front while the rear sat further from ideal
+// left max() unchanged, so every front change scored "inconclusive".
+const tempErrF: Metric = (a) => (a.tires ? Math.abs(a.tires.frontTempF - a.tires.idealF) : null);
+const tempErrR: Metric = (a) => (a.tires ? Math.abs(a.tires.rearTempF - a.tires.idealF) : null);
+const bottoming: Metric = (a) => (a.rideHeight ? Math.max(a.rideHeight.frontBottomPct, a.rideHeight.rearBottomPct) : null);
+const aeroShift: Metric = (a) => (a.aeroBalance ? Math.abs(a.aeroBalance.shift) : null);
+// Mean rpm shortfall of measured shift landings vs peak-torque rpm (0 = none bog).
+const bogGap: Metric = (a) => {
+  const g = a.gearing; if (!g || !g.measured?.length || !g.peakTorqueRpm) return null;
+  const gaps = g.measured.map((m) => Math.max(0, g.peakTorqueRpm! - m.landingRpm));
+  return gaps.length ? Math.round(gaps.reduce((x, y) => x + y, 0) / gaps.length) : null;
+};
+// How much of the rev range top gear never uses (0 = reaches the limiter).
+const revUnused: Metric = (a) => (a.gearing?.finalDrive ? Math.max(0, 100 - a.gearing.finalDrive.topGearRpmPct) : null);
+const launchSpin: Metric = (a) => a.launchRealSpinPct;
+// Damping metrics. These were MISSING entirely, so reviewChange() returned null for every
+// damper change: no verdict, no blocking, no learning — they could be recommended for
+// ever with zero feedback. Rebound is judged by how far the rebound/bump velocity ratio
+// sits from the middle of its healthy band; bump by how far front/rear damper work is
+// from balanced. Both are "lower is better", like every other metric here.
+const REBOUND_IDEAL = 0.8;  // midpoint of the 0.55–1.05 healthy band
+const reboundErrF: Metric = (a) => (a.damping && a.damping.fBump > 0 ? Math.abs(a.damping.fReb / a.damping.fBump - REBOUND_IDEAL) : null);
+const reboundErrR: Metric = (a) => (a.damping && a.damping.rBump > 0 ? Math.abs(a.damping.rReb / a.damping.rBump - REBOUND_IDEAL) : null);
+const damperImbalance: Metric = (a) => (a.damping && a.damping.rmsR > 0 ? Math.abs(a.damping.rmsF / a.damping.rmsR - 1) : null);
+
+// A channel can serve more than one symptom: front ARB is the understeer lever, but it's
+// ALSO used to shift balance forward on a loose rear. Judging it only by the understeer
+// rate meant that when it was doing the second job the metric read 0 with no variance —
+// no signal — so every verdict was "unclear", nothing was ever blocked, and front ARB
+// marched 8 → 46 unchecked. Each channel therefore carries a fallback metric, used when
+// the primary one is degenerate (flat at zero) for this car.
+export const SYMPTOM_METRIC: Record<string, { metric: Metric; label: string; alt?: { metric: Metric; label: string } }> = {
+  balance: { metric: trailRate, label: 'rear-slide-under-braking rate' },
+  pressure: { metric: trailRate, label: 'rear-slide-under-braking rate' },
+  rearDecel: { metric: trailRate, label: 'rear-slide-under-braking rate' },
+  rearAccel: { metric: powerRate, label: 'power-oversteer rate' },
+  center: { metric: powerRate, label: 'power-oversteer rate' },
+  rearToe: { metric: rearLoose, label: 'rear-looseness rate', alt: { metric: trailRate, label: 'rear-slide-under-braking rate' } },
+  rearARB: { metric: rearLoose, label: 'rear-looseness rate', alt: { metric: trailRate, label: 'rear-slide-under-braking rate' } },
+  rearCamber: { metric: rearLoose, label: 'rear-looseness rate' },
+  rearSpring: { metric: rearLoose, label: 'rear-looseness rate' },
+  frontARB: { metric: usRate, label: 'understeer rate', alt: { metric: rearLoose, label: 'rear-looseness rate' } },
+  frontCamber: { metric: usRate, label: 'understeer rate', alt: { metric: rearLoose, label: 'rear-looseness rate' } },
+  frontToe: { metric: usRate, label: 'understeer rate' },
+  caster: { metric: usRate, label: 'understeer rate' },
+  frontSpring: { metric: usRate, label: 'understeer rate' },
+  frontPsi: { metric: tempErrF, label: 'front tire-temp error' },
+  rearPsi: { metric: tempErrR, label: 'rear tire-temp error' },
+  frontHeight: { metric: bottoming, label: 'bottoming %' },
+  rearHeight: { metric: bottoming, label: 'bottoming %' },
+  frontAero: { metric: aeroShift, label: 'speed-dependent balance shift' },
+  rearAero: { metric: aeroShift, label: 'speed-dependent balance shift' },
+  // Gearing: judged by how far the average shift lands from peak power — that's
+  // what re-spacing the box and the final drive are trying to fix.
+  gearbox: { metric: bogGap, label: 'shift-landing gap below the power band' },
+  finalDrive: { metric: revUnused, label: 'unused rev range in top gear' },
+  gear1: { metric: launchSpin, label: 'launch wheelspin' },
+  frontRebound: { metric: reboundErrF, label: 'front rebound/bump balance error' },
+  rearRebound: { metric: reboundErrR, label: 'rear rebound/bump balance error', alt: { metric: trailRate, label: 'rear-slide-under-braking rate' } },
+  frontBump: { metric: damperImbalance, label: 'front/rear damper work imbalance' },
+  rearBump: { metric: damperImbalance, label: 'front/rear damper work imbalance' },
+};
+
+// How messy was the run? discardedPct counts frames thrown out for kerbs, puddles,
+// impact spikes and impossible slip — a good proxy for off-track moments and contact.
+// A messy run's LAP TIME is untrustworthy, though its symptom rates (which are
+// computed from clean frames only) usually still are.
+export interface RunQuality { discardedPct: number; spins: number; messy: boolean; why: string }
+export function runQuality(s: SessionSummary): RunQuality | null {
+  const a = s.analytics;
+  if (!a) return null;
+  const discardedPct = a.discardedPct ?? 0;
+  const cf = a.handling?.cornerFrames ?? 0;
+  const spins = a.handling?.slideEvents ?? 0;
+  const spinRate = cf > 0 ? (spins / cf) * 1000 : 0;
+  // NOTE: thresholds are first-pass and want calibrating against a set of known-clean
+  // vs known-scrappy runs; they only gate a caution message, never a recommendation.
+  const reasons: string[] = [];
+  if (discardedPct > 25) reasons.push(`${discardedPct}% of frames discarded (kerbs / off-track / contact)`);
+  if (spinRate > 12) reasons.push(`${spins} rear-slide events`);
+  return { discardedPct, spins, messy: reasons.length > 0, why: reasons.join(' · ') };
+}
+
+// Has the car stopped getting faster? Without this the loop never terminates: it always
+// finds SOME candidate, so it keeps issuing changes long after the car is dialled in.
+// Are we done? Judged ENTIRELY on car behaviour, never on the clock.
+//
+// Lap/track time is deliberately NOT used anywhere in this file. On a controller the
+// run-to-run variance from a distraction, a missed brake point or traffic is larger
+// than the gain a tuning change produces, so a slower lap says nothing about whether
+// the change worked. Every verdict here comes from measured car symptoms instead.
+export interface TuneStatus {
+  // 'tuning'     — a symptom is actionable and a lever is available
+  // 'dialled-in' — no symptom is above the action threshold
+  // 'limited'    — symptoms remain but every lever for them is exhausted or disproven
+  state: 'tuning' | 'dialled-in' | 'limited';
+  worstSymptom: string | null;
+  worstSeverity: number;
+  openLevers: number;
+  blockedLevers: number;
+}
+
+export type ChangeVerdict = 'worked' | 'no-effect' | 'backfired' | 'unclear';
+
+export interface ChangeReview {
+  channel: string;
+  from: number;
+  to: number;
+  verdict: ChangeVerdict;
+  metricLabel: string;
+  before: number | null;
+  after: number | null;
+  symptomDeltaPct: number | null;
+  // Car-wide scatter of this metric and the size of the change in those units. A
+  // percentage alone is misleading near a metric's floor: 2.5 → 0.0 reads "−100%" but
+  // is only 0.44 sd when the metric scatters ±5.6 and 66% of runs already read 0.
+  scatterSd: number | null;
+  changeInSd: number | null;
+  floorHeavy: boolean;   // most runs sit at the metric's zero floor
+  thinData: boolean;    // few clean frames → symptom reading is less certain
+  advice: string;
+}
+
+// Evaluate the most recent single-channel change purely on the symptom it targeted.
+// Pooled sample of a metric across every comparable run at a given channel value.
+// Symptom rates are extremely noisy run-to-run: measured on real data the rear-looseness
+// rate swung 0.8–17.9 (sd 4.12 vs mean 4.04) across 53 runs at a COMPLETELY FIXED spring
+// rate. Judging a single before/after pair against a +/-12% band is therefore a coin
+// flip, and acting on those verdicts made the planner ping-pong a setting back and
+// forth. So pool every run at each value, compare MEANS, and only return a verdict when
+// the gap clears the measured noise.
+function sampleAt(channel: string, value: number, sessions: SessionSummary[], ref: SessionSummary, metric: Metric): number[] {
+  return sessions
+    .filter((x) => comparable(ref, x) && x.meta?.tune && x.meta.tune[channel] === value && x.analytics)
+    .map((x) => metric(x.analytics!))
+    .filter((v): v is number => v != null);
+}
+const meanOf = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+const sdOf = (a: number[]) => {
+  if (a.length < 2) return NaN;
+  const m = meanOf(a);
+  return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1));
+};
+
+export function reviewChange(
+  exp: { channel: string; from: number; to: number },
+  before: SessionSummary,
+  after: SessionSummary,
+  sessions?: SessionSummary[],
+): ChangeReview | null {
+  const spec0 = SYMPTOM_METRIC[exp.channel];
+  const a0 = before.analytics, a1 = after.analytics;
+  if (!spec0 || !a0 || !a1) return null;
+
+  // Prefer pooled means over the two single runs — see sampleAt().
+  const pool = sessions ?? [];
+  // A metric that sits flat at zero on both sides carries no information about this
+  // lever; fall back to the channel's alternate symptom before giving a verdict.
+  const degenerate = (x: number[], y: number[]) =>
+    [...x, ...y].every((v) => Math.abs(v) < 0.05) || (x.length >= 2 && y.length >= 2 && sdOf(x) === 0 && sdOf(y) === 0);
+  let spec = spec0;
+  let sFrom = sampleAt(exp.channel, exp.from, pool, after, spec.metric);
+  let sTo = sampleAt(exp.channel, exp.to, pool, after, spec.metric);
+  if (spec0.alt && sFrom.length && sTo.length && degenerate(sFrom, sTo)) {
+    const altFrom = sampleAt(exp.channel, exp.from, pool, after, spec0.alt.metric);
+    const altTo = sampleAt(exp.channel, exp.to, pool, after, spec0.alt.metric);
+    if (altFrom.length && altTo.length && !degenerate(altFrom, altTo)) {
+      spec = { metric: spec0.alt.metric, label: `${spec0.alt.label} (this lever's other job)` };
+      sFrom = altFrom; sTo = altTo;
+    }
+  }
+  const pooled = sFrom.length >= 2 && sTo.length >= 2;
+  const noSignal = pooled && degenerate(sFrom, sTo);
+
+  const m0 = pooled ? meanOf(sFrom) : spec.metric(a0);
+  const m1 = pooled ? meanOf(sTo) : spec.metric(a1);
+  const nFrom = pooled ? sFrom.length : 1;
+  const nTo = pooled ? sTo.length : 1;
+
+  // Noise floor: spread of the metric at a FIXED setting. Without repeats we cannot
+  // know it, so we refuse to call a verdict rather than inventing one.
+  const sd = pooled ? Math.max(sdOf(sFrom) || 0, sdOf(sTo) || 0) : NaN;
+  const se = pooled ? Math.sqrt((sd * sd) / nFrom + (sd * sd) / nTo) : NaN;
+
+  const thinData = !!runQuality(after)?.messy;
+  let symptomDeltaPct: number | null = null;
+  if (m0 != null && m1 != null && m0 > 0.05) symptomDeltaPct = ((m1 - m0) / m0) * 100;
+
+  // Car-wide spread of this metric — the yardstick for "is this change even real?".
+  const allVals = pool
+    .filter((x) => comparable(after, x) && x.analytics)
+    .map((x) => spec.metric(x.analytics!))
+    .filter((v): v is number => v != null);
+  const scatterSd = allVals.length >= 5 ? sdOf(allVals) : null;
+  const changeInSd = scatterSd && scatterSd > 0 && m0 != null && m1 != null
+    ? Math.abs(m1 - m0) / scatterSd : null;
+  const floorHeavy = allVals.length >= 5 && allVals.filter((v) => v <= 0.001).length / allVals.length >= 0.4;
+
+  let verdict: ChangeVerdict = 'unclear';
+  let significant = false;
+  if (m0 != null && m1 != null) {
+    if (pooled && isFinite(se) && se > 0) {
+      // Two standard errors ~ 95% confidence. Anything smaller is indistinguishable
+      // from run-to-run scatter and must NOT drive a block or a revert.
+      significant = Math.abs(m1 - m0) > 2 * se;
+      if (significant) verdict = m1 < m0 ? 'worked' : 'backfired';
+      else verdict = nFrom >= 4 && nTo >= 4 ? 'no-effect' : 'unclear';
+    } else if (noSignal) {
+      verdict = 'no-effect'; // metric flat on both sides — this lever isn't moving it
+    } else {
+      verdict = 'unclear'; // single-run pair: not enough to resolve a noisy rate
+    }
+  }
+
+  const noisePct = pooled && m0 ? (2 * se / m0) * 100 : null;
+  let advice: string;
+  if (verdict === 'worked') advice = thinData
+    ? `The symptom improved beyond run-to-run scatter (${nFrom}+${nTo} runs pooled) — keep it. Little of this run was clean though, so re-run to confirm.`
+    : `The symptom improved beyond run-to-run scatter (${nFrom}+${nTo} runs pooled) — keep it and move to the next lever.`;
+  else if (verdict === 'backfired') advice = `The symptom got measurably worse across ${nFrom}+${nTo} pooled runs — put this one back.`;
+  else if (verdict === 'no-effect') advice = `No effect beyond noise across ${nFrom}+${nTo} pooled runs — this lever doesn't move the symptom on this car.`;
+  else if (noSignal) advice = `${spec.label} reads flat across both settings — this lever isn't moving the symptom on this car, so stop spending runs on it.`;
+  else {
+    const bits: string[] = [];
+    if (changeInSd != null && scatterSd != null) {
+      bits.push(`the ${spec.label} varies by about ±${scatterSd.toFixed(1)} between your runs, and this change moved it ${(Math.abs((m1 ?? 0) - (m0 ?? 0))).toFixed(1)} — only ${changeInSd.toFixed(2)} of that spread`);
+    }
+    if (floorHeavy) bits.push(`${Math.round(allVals.filter((v) => v <= 0.001).length / allVals.length * 100)}% of your runs already read 0 here, so hitting 0 is close to a coin flip`);
+    const why = bits.length ? ` — ${bits.join('; ')}` : '';
+    advice = pooled
+      ? `Can't call it yet${why}. Repeat the run at each setting so the comparison has something to stand on.`
+      : `Only one run at each setting${why}. Run each setting again to build a real comparison.`;
+  }
+  return { channel: exp.channel, from: exp.from, to: exp.to, verdict, metricLabel: spec.label, before: m0, after: m1, symptomDeltaPct, scatterSd, changeInSd, floorHeavy, thinData, advice };
+}
+
+// Comparable runs = same car and same event, so the symptom mix is like-for-like.
+// NOTE: no lap/race time is required — dropping that lets practice and free-roam runs
+// contribute symptom data too, which they previously could not.
+function comparable(s: SessionSummary, x: SessionSummary): boolean {
+  if (s.meta?.carOrdinal != null && x.meta?.carOrdinal !== s.meta?.carOrdinal) return false;
+  if (s.finishDistanceM && x.finishDistanceM &&
+    Math.abs(x.finishDistanceM - s.finishDistanceM) > Math.max(50, s.finishDistanceM * 0.05)) return false;
+  return true;
+}
+
+// Mine completed A/B tests out of history. Because the planner issues ONE change per
+// run, most consecutive run pairs differ in exactly one channel — which makes the lap
+// time difference directly attributable. That turns every run (including the failures)
+// into knowledge: a direction that measurably cost time is never recommended again.
+export function experiments(s: SessionSummary, sessions: SessionSummary[]): Experiment[] {
+  const hist = sessions
+    .filter((x) => x.startedAt <= s.startedAt && comparable(s, x) && x.meta?.tune)
+    .sort((a, b) => a.startedAt - b.startedAt);
+  const out: Experiment[] = [];
+  for (let i = 1; i < hist.length; i++) {
+    const A = hist[i - 1], B = hist[i];
+    const at = A.meta!.tune!, bt = B.meta!.tune!;
+    let changed = [...new Set([...Object.keys(at), ...Object.keys(bt)])]
+      .filter((k) => typeof at[k] === 'number' && typeof bt[k] === 'number' && at[k] !== bt[k]);
+    // Re-spacing the gearbox moves several ratios at once but is ONE decision, so
+    // collapse gear1..gearN into a single 'gearbox' change rather than discarding the
+    // pair as confounded.
+    const gearsMoved = changed.filter(isGearRatioKey);
+    if (gearsMoved.length > 1) changed = ['gearbox', ...changed.filter((k) => !isGearRatioKey(k))];
+    if (changed.length !== 1) continue; // confounded — can't attribute
+    const k = changed[0];
+    if (k === 'gearbox') {
+      // Represent the box by its overall spread (1st ÷ top), which is what re-spacing changes.
+      const spread = (t: Record<string, number>) => {
+        const gs = Object.keys(t).filter(isGearRatioKey).sort((x, y) => Number(x.slice(4)) - Number(y.slice(4)));
+        return gs.length >= 2 ? +(t[gs[0]] / t[gs[gs.length - 1]]).toFixed(3) : 0;
+      };
+      const e: Experiment = { channel: 'gearbox', from: spread(at), to: spread(bt), dir: spread(bt) > spread(at) ? 1 : -1 };
+      e.review = reviewChange(e, A, B, sessions);
+      out.push(e);
+      continue;
+    }
+    const e: Experiment = { channel: k, from: at[k], to: bt[k], dir: bt[k] > at[k] ? 1 : -1 };
+    e.review = reviewChange(e, A, B, sessions);
+    out.push(e);
+  }
+  return out;
+}
+
+// Has this channel been moved without the symptom responding? If a channel has been
+// pushed across several runs and its recommendation never shrank, it's the wrong lever.
+function unresponsive(channel: string, s: SessionSummary, sessions: SessionSummary[], deltaOf: (x: SessionSummary) => number | null): boolean {
+  const hist = sessions
+    .filter((x) => x.startedAt <= s.startedAt && x.meta?.tune && typeof x.meta.tune[channel] === 'number')
+    .filter((x) => s.meta?.carOrdinal == null || x.meta?.carOrdinal === s.meta?.carOrdinal)
+    .sort((a, b) => a.startedAt - b.startedAt);
+  if (hist.length < 3) return false;
+  // Look at the channel's WHOLE movement history, not a fixed window of recent runs.
+  // The planner rotates through channels, so any one of them only changes every few
+  // runs — a short window frequently saw zero movement and let a useless lever keep
+  // being recommended (measured: front ARB walked 11.5 → 30, +161%, with the rear
+  // still loose, because it hadn't moved within the last 4 runs).
+  const xs = hist.map((r) => r.meta!.tune![channel]);
+  const moved = Math.max(...xs) - Math.min(...xs);
+  if (Math.abs(moved) < (CH.get(channel)?.step ?? 1) * 3) return false; // never really tried
+  // Compare the recommendation when the channel was at its lowest vs its current value:
+  // if pushing it across that whole range never shrank the ask, it isn't the lever.
+  const ds = hist.map(deltaOf);
+  const firstIdx = ds.findIndex((d) => d != null);
+  const lastIdx = ds.length - 1 - [...ds].reverse().findIndex((d) => d != null);
+  if (firstIdx < 0 || lastIdx <= firstIdx) return false;
+  const d0 = ds[firstIdx] as number, d1 = ds[lastIdx] as number;
+  if (Math.abs(d0) < 1e-6) return false;
+  return Math.abs(d1) >= Math.abs(d0) * 0.75; // ask never shrank by even 25%
+}
+
+export function buildPlan(
+  s: SessionSummary,
+  sessions: SessionSummary[],
+  candidates: Candidate[],
+  deltaOfFor: (channel: string) => ((x: SessionSummary) => number | null) | null,
+): Plan {
+  const tune = s.meta?.tune ?? null;
+  const limits = s.meta?.limits ?? null;
+
+  const exps = experiments(s, sessions);
+  const quality = runQuality(s);
+
+  // Review the change that produced THIS run, judged only on its targeted symptom.
+  let lastChange: ChangeReview | null = null;
+  {
+    const hist = sessions
+      .filter((x) => x.startedAt <= s.startedAt && comparable(s, x) && x.meta?.tune)
+      .sort((a, b) => a.startedAt - b.startedAt);
+    const idx = hist.findIndex((x) => x.id === s.id);
+    if (idx > 0) {
+      const prev = hist[idx - 1];
+      const e = exps.find((x) => prev.meta?.tune?.[x.channel] === x.from && s.meta?.tune?.[x.channel] === x.to);
+      if (e) lastChange = e.review ?? reviewChange(e, prev, s, sessions);
+    }
+  }
+
+  // ---- 2. Rank candidates by symptom severity, then lever priority. ----
+  const bySymptom = new Map<string, number>();
+  for (const c of candidates) bySymptom.set(c.symptom, Math.max(bySymptom.get(c.symptom) ?? 0, c.severity));
+  const dominant = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  const decorate = (c: Candidate): PlannedChange => {
+    const ch = CH.get(c.channel);
+    const from = tune && typeof tune[c.channel] === 'number' ? tune[c.channel] : null;
+    // TARGET VALUE BY BISECTION (everything except gearing, which has its own solver).
+    // The symptom logic supplies only the DIRECTION; bisection supplies the step. That
+    // split matters because direction survives the metric noise while magnitude doesn't.
+    let to: number | null = null;
+    let bracket: Bracket | undefined;
+    let runsLeft: number | null | undefined;
+    if (usesBisection(c.channel)) {
+      const dOf = deltaOfFor(c.channel);
+      // Without a delta function the bracket cannot read history and resets to the full
+      // in-game range every run — the search oscillates forever instead of narrowing.
+      // Silent before; loud now.
+      if (!dOf) console.error(`buildPlan: no delta function for bisecting channel "${c.channel}" — bracket will reset every run and never converge`);
+      bracket = bracketFor(c.channel, from, c.delta, s, sessions, dOf ?? (() => null));
+      to = bracket.next;
+      runsLeft = runsRemaining(bracket, c.channel);
+    } else if (from != null) {
+      to = ch?.kind === 'pct' ? Math.round(from * (1 + c.delta / 100) * 100) / 100 : Math.round((from + c.delta) * 100) / 100;
+      if (ch?.min != null) to = Math.max(ch.min, to);
+      if (ch?.max != null) to = Math.min(ch.max, to);
+    }
+    const order = PLAYBOOK[c.symptom]?.indexOf(c.channel);
+    const rank = order == null || order < 0 ? 99 : order;
+    const dir: 1 | -1 = c.delta > 0 ? 1 : -1;
+    const atLimit = limits?.[c.channel];
+    let blocked: string | undefined;
+    // Driver-declared limit. Essential for springs / ride height / aero, whose ranges
+    // are car-specific and can't be hardcoded — without this the planner keeps
+    // recommending a change the game won't accept.
+    if ((atLimit === 'min' && dir < 0) || (atLimit === 'max' && dir > 0)) {
+      blocked = `you've marked this at its ${atLimit === 'min' ? 'minimum' : 'maximum'}${from != null ? ` (${from}${ch?.unit ?? ''})` : ''} — can't go further, this lever is used up`;
+    } else if (from != null && to != null && Math.abs(to - from) < (ch?.step ?? 1) * 0.5) {
+      blocked = `already at the in-game limit (${from}${ch?.unit ?? ''}) — this lever is used up`;
+    } else {
+      // Already A/B tested this exact direction and it BACKFIRED. Judged on the targeted
+      // symptom, not the clock — blacklisting a lever because of one scrappy lap would
+      // throw away a good setting.
+      // Only a measured SYMPTOM regression disqualifies a direction. A channel with no
+      // symptom metric is never blacklisted — we have no evidence either way.
+      const failed = exps.filter((e) => e.channel === c.channel && e.dir === dir && e.review?.verdict === 'backfired')
+        .sort((a, b) => (b.review!.symptomDeltaPct ?? 0) - (a.review!.symptomDeltaPct ?? 0))[0];
+      if (failed) {
+        const rv = failed.review!;
+        blocked = `tried this direction (${failed.from}→${failed.to}) and the ${rv.metricLabel} got ${rv.symptomDeltaPct!.toFixed(0)}% worse — proven wrong way, don't repeat`;
+      } else {
+        const dOf = deltaOfFor(c.channel);
+        if (dOf && unresponsive(c.channel, s, sessions, dOf)) {
+          blocked = 'moved across several runs without the symptom improving — wrong lever for this car';
+        }
+      }
+    }
+    return { ...c, from, to, rank, blocked, bracket, runsLeft };
+  };
+
+  // Defensive de-dupe: a channel must appear once, at its highest severity. A duplicate
+  // would otherwise show as the primary change AND in the queued list simultaneously.
+  const bestByChannel = new Map<string, Candidate>();
+  for (const c of candidates) {
+    const prev = bestByChannel.get(c.channel);
+    if (!prev || c.severity > prev.severity) bestByChannel.set(c.channel, c);
+  }
+  const all = [...bestByChannel.values()].map(decorate).map((c) => ({ ...c, kind: 'symptom' as const }));
+  const blocked = all.filter((c) => c.blocked);
+  // A change that just backfired is about to be put back, so don't also offer it as
+  // the next thing to try.
+  const revert = lastChange?.verdict === 'backfired' ? lastChange.channel : null;
+  const open = all
+    .filter((c) => !c.blocked && c.channel !== revert)
+    .sort((a, b) => (b.severity - a.severity) || (a.rank - b.rank));
+
+  // A backfired experiment doesn't just disqualify a direction — it PROVES the value it
+  // came from was better. If the car is still sitting on the worse side, walking back to
+  // the known-good value is a real, evidence-backed change. Without this the planner
+  // blocked the lever and declared "no levers left" while holding a setting its own A/B
+  // data showed was wrong (e.g. rear toe −0.2 → −0.4 made rear-looseness 68% worse, and
+  // the car was left at −0.4).
+  const recoveries: PlannedChange[] = [];
+  for (const e of exps) {
+    if (e.review?.verdict !== 'backfired') continue;
+    if (tune == null || typeof tune[e.channel] !== 'number') continue;
+    const cur = tune[e.channel];
+    // Still at (or beyond) the value that made things worse?
+    const worseSide = e.dir > 0 ? cur >= e.to - 1e-9 : cur <= e.to + 1e-9;
+    if (!worseSide) continue;
+    if (blocked.some((b) => b.channel === e.channel && b.blocked?.includes('in-game limit'))) continue;
+    if (open.some((o) => o.channel === e.channel)) continue;
+    const ch = CH.get(e.channel);
+    recoveries.push({
+      channel: e.channel,
+      label: ch?.label ?? e.channel,
+      delta: e.from - cur,
+      why: `going ${e.dir > 0 ? 'up' : 'down'} to ${e.to} made the ${e.review.metricLabel} ${Math.abs(e.review.symptomDeltaPct ?? 0).toFixed(0)}% worse — ${e.from} measured better, go back to it`,
+      symptom: Object.keys(PLAYBOOK).find((k) => PLAYBOOK[k].includes(e.channel)) ?? 'unknown',
+      severity: 0.6,
+      from: cur, to: e.from, rank: 0, kind: 'recovery',
+    });
+  }
+
+  // Only ONE change goes out per run — the highest-authority lever for the worst
+  // symptom. This is computed even when regressed, so a failed experiment always
+  // advances the loop (revert the culprit AND try the next lever) instead of dead-ending.
+  const primary = open[0] ?? recoveries[0] ?? null;
+  const queued = [...open.slice(1), ...(open.length ? recoveries : recoveries.slice(1))];
+  // Status is purely behavioural: is anything actionable left, and can we act on it?
+  const ACTIONABLE = 0.25;                       // below this a symptom isn't worth chasing
+  const worst = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+  const worstSeverity = worst ? worst[1] : 0;
+  const state: TuneStatus['state'] = primary ? 'tuning'
+    : worstSeverity >= ACTIONABLE && blocked.length ? 'limited' : 'dialled-in';
+  const status: TuneStatus = {
+    state,
+    worstSymptom: worst ? worst[0] : null,
+    worstSeverity: +worstSeverity.toFixed(2),
+    openLevers: open.length + recoveries.length,
+    blockedLevers: blocked.length,
+  };
+  return { primary, queued, blocked, dominant, experiments: exps, lastChange, quality, status };
+}
+
+export const SYMPTOM_LABEL: Record<string, string> = {
+  trailBrakeOversteer: 'rear steps out under braking',
+  powerOversteer: 'rear spins up under power',
+  gripOversteer: 'rear runs out of grip mid-corner',
+  understeer: 'front pushes',
+  frontLock: 'fronts lock under braking',
+  tireTemp: 'tires outside their temperature window',
+  bottoming: 'suspension bottoming out',
+  aeroBalance: 'balance shifts with speed',
+  launch: 'launch traction',
+};
