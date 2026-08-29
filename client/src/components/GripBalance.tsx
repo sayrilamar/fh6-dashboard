@@ -26,34 +26,35 @@ function drawTraction(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
   ctx.stroke();
 
-  // trailing dots (grip history). Lateral axis is negated so the dot loads to
-  // the OUTSIDE of the turn (where weight transfers / tires load), matching the
-  // g-force the driver feels — turn right, dot swings left.
+  // LOAD-TRANSFER view: BOTH axes are negated, so the dot sits on the corner of
+  // the car the weight is transferring ONTO — the load the tires actually take,
+  // which is what you tune against. Turn right, the dot swings left (outside);
+  // brake, it moves forward (up); get on the power, it settles back (down).
+  const X = (lat: number) => cx - clamp(lat / G_MAX, -1, 1) * r;
+  const Y = (lon: number) => cy + clamp(lon / G_MAX, -1, 1) * r;
+
+  // trailing dots (grip history)
   const hist = getHistory();
   const tail = hist.slice(-120);
   tail.forEach((s, i) => {
-    const px = cx - clamp(s.gLat / G_MAX, -1, 1) * r;
-    const py = cy - clamp(s.gLong / G_MAX, -1, 1) * r;
     ctx.fillStyle = `rgba(52,211,255,${(i / tail.length) * 0.5})`;
     ctx.beginPath();
-    ctx.arc(px, py, 2, 0, Math.PI * 2);
+    ctx.arc(X(s.gLat), Y(s.gLong), 2, 0, Math.PI * 2);
     ctx.fill();
   });
 
   // current
   const f = getLatest();
   if (f) {
-    const px = cx - clamp(f.d.g.lat / G_MAX, -1, 1) * r;
-    const py = cy - clamp(f.d.g.long / G_MAX, -1, 1) * r;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.arc(X(f.d.g.lat), Y(f.d.g.long), 5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   ctx.fillStyle = '#6b7787';
-  ctx.fillText('ACCEL', cx, cy - r + 8);
-  ctx.fillText('BRAKE', cx, cy + r - 4);
+  ctx.fillText('BRAKE', cx, cy - r + 8);
+  ctx.fillText('ACCEL', cx, cy + r - 4);
 }
 
 export function GripBalance() {

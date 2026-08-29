@@ -10,9 +10,13 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const cy = h / 2;
   const r = Math.min(w, h) / 2 - 14;
   const scale = r / G_MAX;
-  // accel vector → screen: +lateral right, +long (accel) up, -long (brake) down.
-  const X = (lat: number) => cx + clamp(lat / G_MAX, -1, 1) * r;
-  const Y = (lon: number) => cy - clamp(lon / G_MAX, -1, 1) * r;
+  // LOAD-TRANSFER view, same protocol as the Grip & Balance panel: both axes are
+  // negated so the dot sits on the corner of the car the weight transfers ONTO.
+  // Turn right → dot swings left (outside); brake → forward (up); power → back
+  // (down). The trail and the session hull below ride on these two functions, so
+  // the whole diagram stays in one convention.
+  const X = (lat: number) => cx - clamp(lat / G_MAX, -1, 1) * r;
+  const Y = (lon: number) => cy + clamp(lon / G_MAX, -1, 1) * r;
 
   // grip rings every 0.5 g
   ctx.font = '8px monospace';
@@ -69,12 +73,12 @@ function draw(ctx: CanvasRenderingContext2D, w: number, h: number) {
 
   // quadrant labels
   ctx.fillStyle = '#6b7787';
-  ctx.fillText('ACCEL', cx, cy - r + 9);
-  ctx.fillText('BRAKE', cx, cy + r - 2);
+  ctx.fillText('BRAKE', cx, cy - r + 9);
+  ctx.fillText('ACCEL', cx, cy + r - 2);
   ctx.textAlign = 'left';
-  ctx.fillText('LAT →', cx + 6, cy - 5);
+  ctx.fillText('LOAD R', cx + 6, cy - 5);
   ctx.textAlign = 'right';
-  ctx.fillText('← LAT', cx - 6, cy - 5);
+  ctx.fillText('LOAD L', cx - 6, cy - 5);
 }
 
 export function TractionCircle() {
