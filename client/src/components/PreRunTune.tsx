@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getLatest, useMeta, useTick } from '../store';
-import { channelsFor, recommendedFor, VALID_DRIVETRAINS } from '../tune';
+import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
+import { solveGearing, finalDriveAdvice, contextFromAnalytics } from '../gearing';
 import type { TuneSnapshot, TuneLimits } from '../types';
 
 // Pre-run tune capture. Recording what's ACTUALLY on the car before the run (instead of
@@ -94,14 +95,55 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     return n;
   });
 
+  // GEARING IS SOLVED RIGHT HERE, not read back from the report.
+  //
+  // It used to come from `fh6.gears.c.<car>` / `fh6.finaldrive.c.<car>`, keys the tuning
+  // report writes as a side effect of RENDERING. So the pre-run recommendation only
+  // existed if you had opened the report for that session first, and if you hadn't, this
+  // screen silently offered whatever was left from an older run — with no indication it
+  // was stale. Solving from the latest run's analytics removes the ordering requirement
+  // entirely: the numbers are correct whether or not you ever open the report, and both
+  // screens run the same solver over the same measured power band.
+  const lastGearing = useMemo(() => {
+    return [...meta.sessions]
+      .filter((x) => (carOrdinal == null || x.meta?.carOrdinal === carOrdinal) && x.analytics?.gearing)
+      .sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+  }, [meta.sessions, carOrdinal]);
+
+  const gearRecs = useMemo(() => {
+    const out: Record<string, number> = {};
+    const a = lastGearing?.analytics;
+    if (!a?.gearing) return out;
+    const num = (k: string): number | null => {
+      const raw = vals[k];
+      if (raw == null || raw === '') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    // Solve against the ratios currently in the form — that's what is on the car now.
+    // 1st and top are held as anchors, so applying the result and re-solving returns the
+    // same set; the recommendation doesn't chase itself.
+    const ratios: Record<number, number> = {};
+    for (let n = 1; n <= 10; n++) { const v = num(`gear${n}`); if (v != null) ratios[n] = v; }
+    const sol = solveGearing(ratios, numGears, contextFromAnalytics(a));
+    if (sol) for (let n = 1; n <= numGears; n++) if (sol.ratios[n] != null) out[`gear${n}`] = sol.ratios[n];
+
+    const fdCur = num('finalDrive');
+    const adv = finalDriveAdvice(a.gearing.finalDrive, ratios, contextFromAnalytics(a));
+    if (fdCur != null && adv.pct !== 0) out.finalDrive = Math.round(fdCur * adv.scale * 100) / 100;
+    return out;
+  }, [lastGearing, numGears, vals]);
+
   const recs = useMemo(() => {
     const o: Record<string, number> = {};
     for (const c of channels) {
+      // Gearing comes from the solver above, never from the report's cached key.
+      if (isGearRatioKey(c.key) || c.key === 'finalDrive') continue;
       const r = recommendedFor(c.key, carOrdinal);
       if (r != null) o[c.key] = r;
     }
-    return o;
-  }, [channels, carOrdinal]);
+    return { ...o, ...gearRecs };
+  }, [channels, carOrdinal, gearRecs]);
 
   const pendingRecs = channels.filter((c) => {
     const r = recs[c.key];

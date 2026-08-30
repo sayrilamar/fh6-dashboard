@@ -90,21 +90,15 @@ const SECTION_OF: Record<string, string> = {
 
 // The report's latest recommended value for a channel on this car, if any.
 export function recommendedFor(channel: string, carOrdinal?: number): number | null {
-  const id = carOrdinal ?? 'unknown';
-  // Gearing predates the channel registry and keeps its own per-car storage: the gear
-  // section stores ratios keyed by gear NUMBER, final drive stores a bare number.
-  try {
-    if (channel === 'finalDrive') {
-      const v = localStorage.getItem(`fh6.finaldrive.c.${id}`);
-      return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
-    }
-    if (isGearRatioKey(channel)) {
-      const raw = localStorage.getItem(`fh6.gears.c.${id}`);
-      if (!raw) return null;
-      const v = JSON.parse(raw)?.[channel.slice(4)];
-      return typeof v === 'number' ? v : null;
-    }
-  } catch { return null; }
+  // GEARING IS NOT SERVED FROM HERE. It used to read `fh6.gears.c.<car>` and
+  // `fh6.finaldrive.c.<car>` — keys the tuning report writes as a side effect of
+  // rendering — so a caller that had never opened the report got either nothing or a
+  // stale box from an older run, with no way to tell which. Gear ratios and final drive
+  // are now SOLVED from the latest session's measured power band at the point of use
+  // (see gearing.ts: solveGearing / finalDriveAdvice). Returning null here keeps that
+  // the single path: a future caller gets an obvious blank rather than quietly
+  // resurrecting the stale-cache bug.
+  if (channel === 'finalDrive' || isGearRatioKey(channel)) return null;
   const prefix = SECTION_OF[channel];
   if (!prefix) return null;
   try {

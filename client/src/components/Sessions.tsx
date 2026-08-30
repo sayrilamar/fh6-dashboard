@@ -3,9 +3,11 @@ import { Card, SectionHead, Tile } from './Card';
 import type { Status } from './Card';
 import { useMeta, dismissReport, send } from '../store';
 import { fmt, lapTime } from '../format';
-import type { SessionSummary, SessionIssue, SessionAnalytics } from '../types';
+import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot } from '../types';
 import { CHANNELS, isGearRatioKey, learnGain, applyGain } from '../tune';
 import { buildPlan, SYMPTOM_LABEL } from '../plan';
+import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
+import type { GearContext } from '../gearing';
 import type { Candidate, Plan } from '../plan';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
@@ -452,6 +454,11 @@ function inheritSettings<T extends object>(
   prefix: string,
   targetFn: (cur: T, a: SessionAnalytics) => T,
   keys?: string[],
+  // For sections whose shape doesn't match the tune snapshot's key names. Gear ratios
+  // are keyed by NUMBER here (1, 2, 3…) but stored as `gear1`, `gear2`… in the snapshot,
+  // so a plain key copy silently picks up nothing — which is why the gearing sections
+  // were the only ones that never pre-filled from the confirmed tune.
+  fromTune?: (t: TuneSnapshot) => T | null,
 ): { cur: T; from: 'self' | 'prev' | 'car' | null; edited: boolean } {
   // `edited` = the user has actually TYPED a value somewhere in this car's chain
   // (a `.s.<id>` key). Baseline forward-sim populates `cur` too, so having values
@@ -463,11 +470,16 @@ function inheritSettings<T extends object>(
   if (own) return { cur: own, from: 'self', edited: true };
   // GROUND TRUTH: the tune confirmed before this run was recorded. Beats any
   // forward-simulated guess, because it's what was actually on the car.
-  if (keys && s.meta?.tune) {
+  if (s.meta?.tune) {
     const t = s.meta.tune;
-    const picked: Record<string, number> = {};
-    for (const k of keys) if (typeof t[k] === 'number') picked[k] = t[k];
-    if (Object.keys(picked).length) return { cur: picked as T, from: 'self', edited: true };
+    if (fromTune) {
+      const picked = fromTune(t);
+      if (picked && Object.keys(picked).length) return { cur: picked, from: 'self', edited: true };
+    } else if (keys) {
+      const picked: Record<string, number> = {};
+      for (const k of keys) if (typeof t[k] === 'number') picked[k] = t[k];
+      if (Object.keys(picked).length) return { cur: picked as T, from: 'self', edited: true };
+    }
   }
   const prior = sessions.filter((x) => x.startedAt < s.startedAt).sort((a, b) => a.startedAt - b.startedAt);
   const sameCar = prior.filter((x) => s.meta?.carOrdinal != null && x.meta?.carOrdinal === s.meta?.carOrdinal);
@@ -819,7 +831,9 @@ function launchTarget(cur: LaunchInputs, a: SessionAnalytics): LaunchInputs {
 function LaunchGear({ s }: { s: SessionSummary }) {
   const meta = useMeta();
   const a = s.analytics!;
-  const [state, setState] = useState(() => inheritSettings<LaunchInputs>(s, meta.sessions, 'fh6.gear1', launchTarget));
+  const [state, setState] = useState(() => inheritSettings<LaunchInputs>(
+    s, meta.sessions, 'fh6.gear1', launchTarget, undefined,
+    (t) => (typeof t.gear1 === 'number' ? { firstRatio: t.gear1 } : null)));
   const { cur: inp, from } = state;
   // Persist this run's recommendation as the per-car fallback (see DiffRecommendation).
   useEffect(() => {
@@ -942,25 +956,32 @@ function LaunchGear({ s }: { s: SessionSummary }) {
 // gear graph draws, and it's why the whole set has to move together: nudging one gear
 // bends the arc and leaves a neighbour bogged or a shift wasted.
 //
-// So we HOLD 1st (your launch gear) and top gear (your top-speed gear) as anchors,
-// then geometrically fill every gear between them. Enter your ratios and it returns
-// the complete coordinated set. All targets fall between 1st and top, so nothing can
-// exceed the game's limits.
+// So we HOLD 1st (your launch gear) and top gear (your top-speed gear) as anchors, and
+// SOLVE the gears between them for minimum time against this car's measured power band.
+// All targets fall between 1st and top, so nothing can exceed the game's limits.
+//
+// The spacing is deliberately NOT a constant-step geometric arc — see gearing.ts. Equal
+// RPM landings weight every gear equally, but you spend a blink in 2nd and most of the
+// straight in top, so the steps have to tighten where the time actually goes.
 type GearRatioInputs = Record<number, number>; // gear number → current ratio
 
-// The even (geometric) target set: hold gear 1 and gear `n`, interpolate the middle
-// on a log scale (constant step ratio). Needs both anchors and a descending box.
-function geometricSet(ratios: GearRatioInputs, numGears: number): GearRatioInputs | null {
-  const first = ratios[1], top = ratios[numGears];
-  if (first == null || top == null || numGears < 3 || !(first > top && top > 0)) return null;
+// Pull the ratios out of the pre-run tune snapshot, translating `gear1`…`gearN` into the
+// numeric keys this section uses. The confirmed tune is ground truth — it is what was
+// actually bolted to the car — so it beats any forward-simulated pre-fill.
+const tuneToRatios = (t: TuneSnapshot): GearRatioInputs | null => {
   const out: GearRatioInputs = {};
-  for (let n = 1; n <= numGears; n++) {
-    if (n === 1) out[n] = first;
-    else if (n === numGears) out[n] = top;
-    else out[n] = +(first * Math.pow(top / first, (n - 1) / (numGears - 1))).toFixed(2);
+  for (let n = 1; n <= 10; n++) {
+    const v = t[`gear${n}`];
+    if (typeof v === 'number' && v > 0) out[n] = v;
   }
-  return out;
-}
+  return Object.keys(out).length ? out : null;
+};
+
+// Everything the solver needs, all measured off the UDP stream — no driver input.
+const gearCtx = (a: SessionAnalytics): GearContext => contextFromAnalytics(a);
+
+const solvedSet = (ratios: GearRatioInputs, numGears: number, a: SessionAnalytics) =>
+  solveGearing(ratios, numGears, gearCtx(a));
 
 // Total gears = detected top gear, but never fewer than the highest gear you've typed.
 const gearCount = (a: SessionAnalytics, ratios: GearRatioInputs): number => {
@@ -969,27 +990,57 @@ const gearCount = (a: SessionAnalytics, ratios: GearRatioInputs): number => {
   return Math.max(detected, entered);
 };
 
-// Forward-simulate the previous run's recommendation = the even arc, so the next run
-// pre-fills with the coordinated set (assuming you applied it).
-function gearTarget(cur: GearRatioInputs, a: SessionAnalytics): GearRatioInputs {
-  return geometricSet(cur, gearCount(a, cur)) ?? cur;
+// The gear count the REPORT is using: the driver's per-car "Total gears" override when
+// set, else what the telemetry detected. Detection only sees the gears you actually
+// USED, so a run that never reached top gear undercounts — which is the whole reason
+// the override exists, and the reason every consumer has to read it.
+function gearCountFor(a: SessionAnalytics, ratios: GearRatioInputs, carOrdinal?: number): number {
+  try {
+    const v = localStorage.getItem(`fh6.gears.count.${carOrdinal ?? 'unknown'}`);
+    const n = v ? Number(v) : NaN;
+    if (Number.isFinite(n) && n >= 3 && n <= 10) return n;
+  } catch { /* ignore */ }
+  return gearCount(a, ratios);
+}
+
+// Forward-simulate the previous run's recommendation, so the next run pre-fills with
+// the coordinated set (assuming you applied it). Must resolve the gear count the same
+// way the display does — it previously used the raw detected count and ignored the
+// override, so with an override set the box on screen and the box handed to Confirm &
+// Record were solved for different gear counts.
+function gearTarget(cur: GearRatioInputs, a: SessionAnalytics, carOrdinal?: number): GearRatioInputs {
+  return solvedSet(cur, gearCountFor(a, cur, carOrdinal), a)?.ratios ?? cur;
 }
 
 function GearRatios({ s }: { s: SessionSummary }) {
   const meta = useMeta();
   const g = s.analytics?.gearing;
   const countKey = `fh6.gears.count.${s.meta?.carOrdinal ?? 'unknown'}`;
-  const [state, setState] = useState(() => inheritSettings<GearRatioInputs>(s, meta.sessions, 'fh6.gears', gearTarget));
+  const [state, setState] = useState(() => inheritSettings<GearRatioInputs>(
+    s, meta.sessions, 'fh6.gears', (c, a) => gearTarget(c, a, s.meta?.carOrdinal), undefined, tuneToRatios));
   const { cur: ratios, edited } = state;
   // Total-gears override, saved per car — because detection only sees the gears you
   // USED this session, so a run that never reached top gear would undercount.
   const [override, setOverride] = useState<number | null>(() => {
     try { const v = localStorage.getItem(countKey); return v ? Number(v) : null; } catch { return null; }
   });
+  const detected = s.analytics ? gearCount(s.analytics, ratios) : 0;
+  const numGears = override ?? detected;
+  // Publish the recommendation for the pre-run Confirm & Record screen. This persists
+  // the SAME object the report renders, rather than recomputing it down a second path —
+  // that second path is how the two screens came to disagree. When there is no valid
+  // solution (anchors missing, e.g. the override says 8 gears but 8th isn't entered yet)
+  // the key is CLEARED, so Confirm & Record shows nothing instead of confidently
+  // offering a stale box for a different gear count.
   useEffect(() => {
     if (!s.analytics || Object.keys(ratios).length === 0) return;
-    try { localStorage.setItem(`fh6.gears.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(gearTarget(ratios, s.analytics))); } catch { /* ignore */ }
-  }, [ratios, s]);
+    const key = `fh6.gears.c.${s.meta?.carOrdinal ?? 'unknown'}`;
+    const t = solvedSet(ratios, numGears, s.analytics)?.ratios ?? null;
+    try {
+      if (t) localStorage.setItem(key, JSON.stringify(t));
+      else localStorage.removeItem(key);
+    } catch { /* ignore */ }
+  }, [ratios, s, numGears]);
   if (!g) return null;
 
   const setRatio = (gear: number, v: string) => {
@@ -1004,10 +1055,9 @@ function GearRatios({ s }: { s: SessionSummary }) {
     try { if (n == null) localStorage.removeItem(countKey); else localStorage.setItem(countKey, String(n)); } catch { /* ignore */ }
   };
 
-  const detected = gearCount(s.analytics!, ratios);
-  const numGears = override ?? detected;
   const gearList = Array.from({ length: numGears }, (_, i) => i + 1);
-  const target = geometricSet(ratios, numGears);
+  const sol = solvedSet(ratios, numGears, s.analytics!);
+  const target = sol?.ratios ?? null;
   const first = ratios[1], top = ratios[numGears];
   const anchorsSet = target != null;
   // Bog line = PEAK TORQUE rpm: below it the engine labors (a real bog). Landing
@@ -1015,10 +1065,17 @@ function GearRatios({ s }: { s: SessionSummary }) {
   // pulling hard. (Using the 90%-power edge as the bog line was too strict and flagged
   // good boxes.) Fall back to ~67% of peak-power rpm if torque rpm isn't measured.
   const bogRpm = g.peakTorqueRpm ?? Math.round(g.peakHpRpm * 0.67);
-  // Even step ratio & the RPM every shift would land at with the arc applied.
-  const step = anchorsSet ? Math.pow((top as number) / (first as number), 1 / (numGears - 1)) : null;
-  const evenLanding = step != null ? Math.round(g.shiftRpm * step) : null;
-  const evenBogs = evenLanding != null && evenLanding < bogRpm;
+  // Landings of the RECOMMENDED box. These are deliberately NOT all the same number any
+  // more: the solved box drops furthest on the 1→2 shift and barely drops at the top.
+  const tgtLandings = target ? landingsFor(target, g.shiftRpm) : {};
+  const landedGears = Object.keys(tgtLandings).map(Number).sort((a, b) => a - b);
+  // A low 1→2 landing is intentional — 1st is a launch gear you leave almost at once, so
+  // a valley there is paid for in a fraction of a second. The bog test therefore covers
+  // shifts into 3rd and above, which is where the time on a lap is actually spent.
+  const payingLandings = landedGears.filter((n) => n >= 3).map((n) => tgtLandings[n]);
+  const worstLanding = payingLandings.length ? Math.min(...payingLandings) : null;
+  const topLanding = landedGears.length ? tgtLandings[landedGears[landedGears.length - 1]] : null;
+  const evenBogs = worstLanding != null && worstLanding < bogRpm;
   // Landing predicted from the ratios you actually entered (consecutive pair).
   const curLanding = (n: number): number | null =>
     ratios[n] != null && ratios[n - 1] != null ? Math.round(g.shiftRpm * (ratios[n] / ratios[n - 1])) : null;
@@ -1032,24 +1089,29 @@ function GearRatios({ s }: { s: SessionSummary }) {
     : 0;
   const onArc = middleEntered && maxDev < 2;
 
-  // MINIMUM GEAR COUNT for this 1st→top range. For an evenly-spaced box every shift
-  // lands at shiftRPM × r, where r = (top/1st)^(1/(N−1)). Requiring that landing to stay
-  // above peak torque gives, after logs:
-  //     N ≥ 1 + ln(spread) / ln(shiftRPM / bogRPM)
-  // Every term is measured, so this answers "do I need a different transmission?"
-  // exactly rather than by feel.
+  // MINIMUM GEAR COUNT for this 1st→top range: the fewest gears that keep every shift
+  // into 3rd or above off the bog line. Solved by running the SAME solver at each gear
+  // count rather than from a closed form, because the closed form only holds for even
+  // spacing — with solved spacing the steps differ per gear, so the algebra no longer
+  // describes the box being recommended.
   const spread = anchorsSet ? (first as number) / (top as number) : null;
-  const headroom = g.shiftRpm / bogRpm; // how far the engine can fall per shift
-  const minGears = spread != null && spread > 1 && headroom > 1.01
-    ? Math.ceil(1 + Math.log(spread) / Math.log(headroom))
-    : null;
+  let minGears: number | null = null;
+  if (anchorsSet) {
+    for (let n = 3; n <= 10; n++) {
+      const cand = solvedSet({ ...ratios, 1: first as number, [n]: top as number }, n, s.analytics!);
+      if (!cand) continue;
+      const L = landingsFor(cand.ratios, g.shiftRpm);
+      const paying = Object.keys(L).map(Number).filter((k) => k >= 3).map((k) => L[k]);
+      if (paying.length && Math.min(...paying) >= bogRpm) { minGears = n; break; }
+    }
+  }
   const needsMoreGears = minGears != null && minGears > numGears;
 
   return (
     <>
-      <div className="sec-head">Gear ratios — even spacing (the arc)</div>
+      <div className="sec-head">Gear ratios — solved for minimum time</div>
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
-        A well-spaced box lands at the <b>same RPM after every shift</b> — a smooth arc on the in-game gear graph. That's a <b>geometric progression</b>, so the gears must be set <b>together</b>. Enter all your ratios; this holds <b>1st</b> (launch) and <b>top gear</b> (top speed) and fills the middle for you.
+        Every basic tuning calculator spaces a box <b>evenly</b> — the same RPM after every shift, a smooth arc on the in-game graph. That is not the fastest box. Equal landings weight every gear the same, but you spend a blink in 2nd and most of the straight in top, so a power valley up top costs several seconds where the identical valley low down costs a fraction of one. This solves the spacing against <b>your car's measured power curve</b> for minimum time: <b>wide steps low, tightening toward top gear</b>. Holds <b>1st</b> (launch) and <b>top gear</b> (top speed) as anchors and sets the middle together.
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11 }}>
         <span style={{ color: 'var(--muted)' }}>Total gears</span>
@@ -1078,13 +1140,23 @@ function GearRatios({ s }: { s: SessionSummary }) {
           <div className={`note ${onArc && !evenBogs ? 'info' : 'warn'}`} style={{ marginTop: 6 }}>
             <b>{onArc
               ? (evenBogs
-                ? `Spacing is even, but even the arc lands ~${evenLanding} rpm — below peak torque (${bogRpm} rpm) — so every gear bogs. It's a RANGE problem, not spacing (see below).`
-                : `Box is on the arc — even ${evenLanding} rpm landing every shift, above peak torque (${bogRpm} rpm), so it pulls cleanly. Leave it.`)
-              : `Set each → target to put the box on the arc — an even ${evenLanding} rpm landing every shift, above peak torque so nothing bogs.${middleEntered ? ` (currently up to ${maxDev.toFixed(0)}% off)` : ''}`}</b>
+                ? `Spacing is solved, but the tightest shift still lands ~${worstLanding} rpm — below peak torque (${bogRpm} rpm) — so the upper gears bog. That's a RANGE problem, not spacing (see below).`
+                : `Box is solved — every shift into 3rd and up lands at or above ${worstLanding} rpm, clear of peak torque (${bogRpm} rpm), with the top shift holding ${topLanding} rpm. Leave it.`)
+              : `Set each → target for the time-optimal box${topLanding != null ? ` — the top shift holds ${topLanding} rpm and nothing above 2nd drops under ${worstLanding} rpm` : ''}.${middleEntered ? ` (currently up to ${maxDev.toFixed(0)}% off)` : ''}`}</b>
+            {sol?.solved && sol.gainVsGeometricSec != null && sol.gainVsGeometricSec > 0.01 && (
+              <div style={{ marginTop: 3, fontWeight: 400, color: 'var(--muted)', fontSize: 11 }}>
+                Solved against your measured power band (progression exponent {sol.exponent}) — about <b>{sol.gainVsGeometricSec.toFixed(2)}s</b> per full pull through the box versus the evenly-spaced arc a basic calculator would give you.
+              </div>
+            )}
+            {sol && !sol.solved && (
+              <div style={{ marginTop: 3, fontWeight: 400, color: 'var(--muted)', fontSize: 11 }}>
+                Not enough clean full-throttle data this run to simulate your power curve, so this uses the validated default progression. Do one long flat-out pull through every gear and it will solve against your actual dyno.
+              </div>
+            )}
           </div>
           {evenBogs && (
             <div className="note crit" style={{ marginTop: 6 }}>
-              Even perfectly spaced, each shift lands ~{evenLanding} rpm — below peak torque ({bogRpm} rpm), so the engine labors out of every gear. The 1st→top <b>range is too wide for {numGears} gears</b>.
+              Even with the spacing solved, the tightest shift above 2nd lands ~{worstLanding} rpm — below peak torque ({bogRpm} rpm), so the engine labors out of the upper gears. The 1st→top <b>range is too wide for {numGears} gears</b>.
               {needsMoreGears
                 ? <> Covering a {spread!.toFixed(2)}:1 spread without dropping below peak torque needs <b>at least {minGears} gears</b> — a <b>{minGears}-speed</b> swap fixes this properly. Otherwise: shorten 1st, lengthen top gear, or accept the bog.</>
                 : <> Shorten 1st a touch, lengthen top gear, or accept the bog.</>}
@@ -1092,7 +1164,7 @@ function GearRatios({ s }: { s: SessionSummary }) {
           )}
           {!evenBogs && minGears != null && (
             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
-              Your {spread!.toFixed(2)}:1 spread needs at least <b>{minGears}</b> gears to keep every shift above peak torque — you have <b>{numGears}</b>
+              Your {spread!.toFixed(2)}:1 spread needs at least <b>{minGears}</b> gears to keep every shift above 2nd clear of peak torque — you have <b>{numGears}</b>
               {minGears < numGears
                 ? <>, so there's room to spare. A {minGears}-speed could cover this range, and the extra ratios let you run tighter steps for better acceleration.</>
                 : <>, which is exactly enough. A shorter transmission would start bogging.</>}
@@ -1146,7 +1218,7 @@ function GearRatios({ s }: { s: SessionSummary }) {
 
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
         {edited ? 'Boxes pre-fill from your previous run\'s recommendation — edit any to override. ' : ''}
-        This coordinates the <b>whole box</b>: applying the → set makes the gear graph a smooth arc and lands the same RPM ({evenLanding ?? '—'} rpm) after every shift, so no gear bogs and no shift is wasted. 1st and top are your anchors — set 1st for launch grip and top gear for the top speed you need; <b>final drive</b> then shifts the whole arc for top speed without changing the spacing.
+        This coordinates the <b>whole box</b>. The gear graph will look slightly steeper at the bottom than the even arc you may be used to — that is intentional, and it is where the time comes from: the low gears give up a little so the tall gears, where you spend most of the lap, keep more power on tap. 1st and top are your anchors — set 1st for launch grip and top gear for the top speed you need; <b>final drive</b> then scales the whole box for top speed without changing the spacing.
       </div>
     </>
   );
@@ -1161,24 +1233,27 @@ function FinalDrive({ s }: { s: SessionSummary }) {
   const fd = s.analytics?.gearing?.finalDrive;
   const cKey = `fh6.finaldrive.c.${s.meta?.carOrdinal ?? 'unknown'}`;
   const sKey = `fh6.finaldrive.s.${s.id}`;
+  // Same precedence every other section uses. This one doesn't go through
+  // inheritSettings, so it needs the confirmed-tune step spelled out: without it the
+  // final drive was the one gearing field that never pre-filled from the tune you
+  // confirmed before the run. Note the `.c.` key is the auto-written RECOMMENDATION,
+  // not something you typed, so it must rank below the tune snapshot rather than
+  // standing in for what is actually on the car.
   const [cur, setCurState] = useState<number | null>(() => {
-    try { const v = localStorage.getItem(sKey) ?? localStorage.getItem(cKey); return v ? Number(v) : null; } catch { return null; }
+    try { const own = localStorage.getItem(sKey); if (own != null) return Number(own); } catch { /* ignore */ }
+    const confirmed = s.meta?.tune?.finalDrive;
+    if (typeof confirmed === 'number' && confirmed > 0) return confirmed;
+    try { const v = localStorage.getItem(cKey); return v ? Number(v) : null; } catch { return null; }
   });
   // Recommendation from top-gear rev usage, measured against the ACTUAL rev limit.
-  let pct = 0, why = '', dir: 'shorter' | 'longer' | 'hold' = 'hold';
-  if (fd) {
-    if (fd.limiterPct >= 5) {
-      pct = -Math.min(6, Math.max(2, Math.round(fd.limiterPct / 2)));
-      dir = 'longer';
-      why = `You hit the rev limiter in top gear ${fd.limiterPct}% of the straight (${fd.topGearMaxRpm} rpm). If you're hitting it BEFORE the end of the longest straight, LENGTHEN final drive (lower the number) for more top speed. If it's right at your braking point, you're already optimal — hold.`;
-    } else if (fd.topGearRpmPct <= 92) {
-      pct = Math.min(15, Math.max(3, Math.round(100 - fd.topGearRpmPct)));
-      dir = 'shorter';
-      why = `Top gear only reaches ${fd.topGearRpmPct}% of your rev limit (${fd.topGearMaxRpm} / ${fd.redlineRpm} rpm) — SHORTEN final drive (raise the number) for more acceleration; you're leaving the top of the rev range unused.`;
-    } else {
-      why = `Top gear reaches ${fd.topGearRpmPct}% of your rev limit with little time pinned there — you're using the rev range well. Hold.`;
-    }
-  }
+  // Solve against the measured power band + where this track is on power, using the tune
+  // confirmed before the run as the ratio set. Falls back to the rpm rule if data is thin.
+  const adv = finalDriveAdvice(
+    fd,
+    s.meta?.tune ? tuneToRatios(s.meta.tune) : null,
+    s.analytics ? contextFromAnalytics(s.analytics) : null,
+  );
+  const { pct, dir, why } = adv;
   useEffect(() => {
     if (cur == null || !fd) return;
     const tgt = pct ? +(cur * (1 + pct / 100)).toFixed(2) : cur;
