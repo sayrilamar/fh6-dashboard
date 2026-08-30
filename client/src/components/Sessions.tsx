@@ -1254,11 +1254,19 @@ function FinalDrive({ s }: { s: SessionSummary }) {
     s.analytics ? contextFromAnalytics(s.analytics) : null,
   );
   const { pct, dir, why } = adv;
+  // The scale is relative to the final drive the RUN was recorded at, since that is what
+  // the measured power band and speed mapping behind the solve belong to. Applying it to
+  // a hand-typed value instead would rescale a recommendation that was never about that
+  // number — and in the pre-run screen the same mistake made the suggestion chase itself.
+  const runFd = typeof s.meta?.tune?.finalDrive === 'number' ? s.meta.tune.finalDrive : null;
+  const solvedTarget = pct
+    ? (runFd != null ? Math.round(runFd * adv.scale * 100) / 100
+      : cur != null ? Math.round(cur * adv.scale * 100) / 100 : null)
+    : cur;
   useEffect(() => {
-    if (cur == null || !fd) return;
-    const tgt = pct ? +(cur * (1 + pct / 100)).toFixed(2) : cur;
-    try { localStorage.setItem(cKey, String(tgt)); } catch { /* ignore */ }
-  }, [cur, s, pct, fd, cKey]);
+    if (!fd || solvedTarget == null) return;
+    try { localStorage.setItem(cKey, String(solvedTarget)); } catch { /* ignore */ }
+  }, [s, fd, cKey, solvedTarget]);
   if (!fd) return null;
 
   const setCur = (v: string) => {
@@ -1267,7 +1275,7 @@ function FinalDrive({ s }: { s: SessionSummary }) {
     try { if (n == null) localStorage.removeItem(sKey); else localStorage.setItem(sKey, String(n)); } catch { /* ignore */ }
   };
   const held = pct === 0;
-  const target = !held && cur != null ? +(cur * (1 + pct / 100)).toFixed(2) : cur;
+  const target = !held ? solvedTarget : cur;
   const dColor = held ? 'var(--muted)' : 'var(--blue)';
 
   return (
