@@ -144,6 +144,29 @@ export function bracketFor(
     }
   }
 
+  // MOVE CAP. The symptom logic hands over both a DIRECTION and a MAGNITUDE — the step it
+  // believes suits this channel (a tenth or two of a degree of toe; a few points of ARB).
+  // Bisection used only the sign and jumped to the midpoint of the bracket, which on a
+  // channel whose in-game rail is far wider than its useful range is an order of
+  // magnitude too coarse. Measured: with rear toe advised +0.2, the midpoint of
+  // [2.7, 5.0] moved it +1.2 in a single run — six times the advised step — and because
+  // `lo` ratchets upward for as long as the symptom persists, it marched toward the rail
+  // exactly the way the old inverted-sign version marched toward the other one. Rear toe
+  // of 3.9 deg is not a tune, it is a tyre-scrubbing handbrake.
+  //
+  // Capping a single run's move at a few times the advised step keeps bisection's
+  // acceleration (it may still move faster than the naive nudge) without letting it
+  // outrun the physics the symptom layer understands. Once the bracket narrows below the
+  // cap, this stops binding and normal bisection resumes.
+  const MOVE_CAP = 3;
+  if (direction !== 0 && Number.isFinite(direction)) {
+    const maxMove = Math.max(step, Math.abs(direction) * MOVE_CAP);
+    if (Math.abs(next - current) > maxMove) {
+      next = snap(current + Math.sign(next - current) * maxMove, step);
+      rationale += ` Capped to ${maxMove} this run — the symptom only justifies a ${Math.abs(direction)} step, so the search moves in bounded increments rather than jumping the bracket.`;
+    }
+  }
+
   // INVARIANT: never step against this run's own advice. The bracket logic above
   // keeps lo/hi straddling `current`, so the midpoint already lands on the right
   // side — but a channel pinned at a rail can still produce a wrong-way midpoint.

@@ -176,8 +176,14 @@ function handlingDeltas(a: SessionAnalytics): Record<string, { d: number; why: s
   // issue (handled in the Braking section) — so drive the understeer levers ONLY off the
   // overall steady-state read, not brakeStability.
   const usRate = (h.understeerFrames / cf) * 1000;
-  const isUS = h.overall === 'understeer';
-  const usSev = isUS ? Math.max(0.4, sev((usRate - 1) / 4)) : 0;
+  // NO FLOOR ON A COIN FLIP. `overall` is decided by comparing understeer and oversteer
+  // FRAME COUNTS, and on real data those run 0 or 1 frames out of ~2,900 cornering
+  // frames — so `overall` flips between 'neutral' and 'understeer' on a single frame.
+  // Flooring severity at 0.4 whenever that coin landed on "understeer" put every front
+  // lever (toe, camber, caster, ARB, spring) on the table at meaningful severity on the
+  // strength of one frame in three thousand. collectCandidates removed the same floor
+  // for the same reason; this copy survived. Severity now comes from the RATE alone.
+  const usSev = sev((usRate - 1) / 4);
   const causeTxt = `${p.trailBrake}/${p.power}/${p.grip} per-1k brake/power/grip`;
 
   // TOE SIGN. In Forza the value convention is: POSITIVE = toe-IN (stability),
