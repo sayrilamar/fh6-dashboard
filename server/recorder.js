@@ -36,6 +36,14 @@ const P_GRIP = 0.99;
 const AUTO_STOP_IDLE_MS = 60000; // gameplay gone this long => the run is over
 const RACE_RESET_S = 5;          // clock dropping this far back => a new event began
 const RACE_MIN_S = 5;            // clock past this => this really is a race, not free roam
+// Odometer reset. Measured at a real FH6 finish: distanceTraveled went 5950 -> 249 while
+// lapNumber ticked 0 -> 1 and lastLap filled in with the finishing time. The odometer only
+// goes backwards like this when the event ends and the game drops you back out, so it is
+// the definitive marker. Requiring a substantial high-water mark AND a fall to under half
+// of it keeps rewind (which claws back a few hundred metres at most) from tripping it,
+// and skips the negative distance the packet reports on the grid before the lights go out.
+const DIST_MIN_M = 500;
+const DIST_RESET_FRACTION = 0.5;
 
 export class Recorder {
   constructor({ autoRecover = true } = {}) {
@@ -81,6 +89,7 @@ export class Recorder {
     this.prev = { speedMs: null, ts: 0, gear: null, rpm: 0, throttle: 0 };
     this.lastRaceOnTs = 0;   // last frame with gameplay actually running
     this.maxRaceTime = 0;    // high-water mark of the race clock
+    this.maxDistance = 0;    // high-water mark of the odometer
     this.sawRace = false;    // this capture is a race, not free roam
   }
 
@@ -110,14 +119,24 @@ export class Recorder {
       return null;
     }
 
-    // Clock reset => a new event started, so the recorded one has finished. Stop BEFORE
-    // writing this frame so the next race never bleeds into this session's file.
+    // THE FINISH. Either marker means the recorded event is over; stop BEFORE writing this
+    // frame so the aftermath never lands in the session's file.
+    //
+    // The odometer reset is the one that actually fires in practice. The other two
+    // detectors here were both written from assumptions and both missed a real finish:
+    // isRaceOn came back after only 15s (far inside the 60s idle timeout), and
+    // currentRaceTime kept counting straight through the finish rather than resetting.
+    if (this.sawRace && this.maxDistance > DIST_MIN_M
+        && t.distanceTraveled < this.maxDistance * DIST_RESET_FRACTION) {
+      return this.stop();
+    }
     if (this.sawRace && t.currentRaceTime < this.maxRaceTime - RACE_RESET_S) {
       return this.stop();
     }
 
     this.lastRaceOnTs = frame.ts;
     if (t.currentRaceTime > this.maxRaceTime) this.maxRaceTime = t.currentRaceTime;
+    if (t.distanceTraveled > this.maxDistance) this.maxDistance = t.distanceTraveled;
     // A race has a running clock and a grid position. Free roam has neither, so a
     // free-roam capture never arms the auto-stop and stays under manual control.
     if (t.currentRaceTime > RACE_MIN_S || t.racePosition > 0) this.sawRace = true;
