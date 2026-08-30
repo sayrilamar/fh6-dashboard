@@ -160,7 +160,13 @@ udp.on('message', (buf) => {
   prevFrame = t;
   prevTs = now;
 
-  recorder.add(frame);
+  // A race capture ends itself; add() returns the summary when it does.
+  const autoSummary = recorder.add(frame);
+  if (autoSummary) {
+    console.log(`[recorder] race finished — auto-stopped ${autoSummary.id} (${autoSummary.frames} frames, ${autoSummary.durationSec}s)`);
+    broadcast({ type: 'recording', status: recorder.status() });
+    broadcast({ type: 'session-saved', summary: autoSummary, sessions: recorder.list(), auto: true });
+  }
   broadcast(frame);
 });
 

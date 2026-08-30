@@ -21,6 +21,22 @@ const worseLevel = (a, b) => (LEVEL_RANK[b] > LEVEL_RANK[a] ? b : a);
 // grip); p99 is the sustained limit a tuner actually cares about.
 const P_GRIP = 0.99;
 
+// ---- Auto-stop -------------------------------------------------------------------
+// A race capture should end itself; a free-roam capture should not, because free roam
+// has no end. Two signals, because neither alone is enough:
+//
+//   * isRaceOn drops whenever gameplay stops — pause, menu, OR the post-race results
+//     screen. It cannot tell a finish from a pause, and pauses are long: one recorded
+//     run sat paused for 38 s mid-race. So the idle timeout is deliberately generous.
+//     Nothing is lost by waiting, because frames with isRaceOn false are never captured
+//     anyway — the only cost of a late stop is a stale REC light.
+//   * currentRaceTime RESETTING is unambiguous: the clock only returns to zero when a
+//     new event starts, so the run being recorded is definitively over. This is what
+//     stops two races landing in one file if the driver queues straight into another.
+const AUTO_STOP_IDLE_MS = 60000; // gameplay gone this long => the run is over
+const RACE_RESET_S = 5;          // clock dropping this far back => a new event began
+const RACE_MIN_S = 5;            // clock past this => this really is a race, not free roam
+
 export class Recorder {
   constructor({ autoRecover = true } = {}) {
     this.active = false;
@@ -63,6 +79,9 @@ export class Recorder {
     this.active = true;
     this.armed = false;
     this.prev = { speedMs: null, ts: 0, gear: null, rpm: 0, throttle: 0 };
+    this.lastRaceOnTs = 0;   // last frame with gameplay actually running
+    this.maxRaceTime = 0;    // high-water mark of the race clock
+    this.sawRace = false;    // this capture is a race, not free roam
   }
 
   add(frame) {
@@ -79,12 +98,34 @@ export class Recorder {
         limits: this.pendingLimits || undefined,
       });
     }
-    if (!this.active || !this.session) return;
-    if (!frame.t.isRaceOn) return;
+    if (!this.active || !this.session) return null;
+    const t = frame.t;
+
+    if (!t.isRaceOn) {
+      // Paused, in a menu, or sitting on the results screen. Either way nothing is
+      // captured; the only question is whether the run has ended.
+      if (this.sawRace && this.lastRaceOnTs && frame.ts - this.lastRaceOnTs >= AUTO_STOP_IDLE_MS) {
+        return this.stop();
+      }
+      return null;
+    }
+
+    // Clock reset => a new event started, so the recorded one has finished. Stop BEFORE
+    // writing this frame so the next race never bleeds into this session's file.
+    if (this.sawRace && t.currentRaceTime < this.maxRaceTime - RACE_RESET_S) {
+      return this.stop();
+    }
+
+    this.lastRaceOnTs = frame.ts;
+    if (t.currentRaceTime > this.maxRaceTime) this.maxRaceTime = t.currentRaceTime;
+    // A race has a running clock and a grid position. Free roam has neither, so a
+    // free-roam capture never arms the auto-stop and stays under manual control.
+    if (t.currentRaceTime > RACE_MIN_S || t.racePosition > 0) this.sawRace = true;
 
     this.stream.write(JSON.stringify(frame) + '\n');
     this.session.frames++;
     this.prev = applyFrame(this.session.agg, frame, this.prev);
+    return null;
   }
 
   stop() {
@@ -104,7 +145,13 @@ export class Recorder {
   }
 
   buildSummary() {
-    return summarize(this.session, Date.now());
+    // End the session at the last frame where gameplay was actually running, not at the
+    // moment stop() happened. Menus, pauses and the results screen used to inflate
+    // durationSec badly — one recorded run reported 447 s for 143 s of driving.
+    // Guard the floor: a session stopped before any gameplay frame arrived has no
+    // lastRaceOnTs, and a clock skew must never produce a negative duration.
+    const endedAt = Math.max(this.lastRaceOnTs || 0, this.session.startedAt);
+    return summarize(this.session, endedAt || Date.now());
   }
 
   // Rebuild summaries for any .jsonl that has no matching .summary.json — i.e.
