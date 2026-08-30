@@ -235,6 +235,11 @@ export interface SessionAnalytics {
       topGear: number; topGearMaxRpm: number; topGearRpmPct: number; limiterPct: number;
       redlineRpm: number; samples: number;
     } | null;
+    powerBand: PowerBandPoint[];  // measured WOT dyno — the gear solver simulates on this
+    topSpeedMs: number | null;    // fastest clean speed; with topGearMaxRpm = speed per rpm
+    // Full-throttle-and-gaining frames per speed bin — weights the final-drive solve
+    // toward the speeds this track actually accelerates through.
+    wotSpeedHist: { binMs: number; counts: number[] } | null;
   } | null;
   powertrain: { level: 'info' | 'warn' | 'crit'; title: string; text: string }[];
   handling: {

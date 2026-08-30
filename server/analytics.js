@@ -11,7 +11,9 @@ const MS_TO_MPH = 2.2369362920544;
 const RAD_TO_DEG = 57.29577951308232;
 const M_TO_IN = 39.3700787;
 const M_TO_FT = 3.2808399;
-const RHO = 1.225; // air density kg/m^3
+const RHO = 1.225;
+const WOT_BIN_MS = 2;    // speed-histogram bin width, m/s
+const WOT_BINS = 60;     // 0-120 m/s // air density kg/m^3
 const V100 = 44.704; // 100 mph in m/s
 // Tire grip window (°F), matching metrics.js TIRE. Ideal ~175; below cold or above
 // hot loses grip. Used to pressure-tune tires toward the window.
@@ -36,6 +38,11 @@ export function freshAnalytics() {
   return {
     latSigned: [], longSigned: [], speed: [], roll: [], pitch: [], slipFront: [], slipRear: [],
     cdaSpeed: 0, cdaPower: 0,
+    // Where the car is actually ON POWER, by speed. The final-drive solver weights its
+    // objective by this: making more force at a speed you never accelerate through is
+    // worth nothing, and this is the only honest way to know which speeds those are.
+    // 2 m/s bins, 0-120 m/s (0-268 mph).
+    wotSpeed: new Array(WOT_BINS).fill(0),
     rrFront: 0, rrRear: 0, rrCount: 0,
     accelSlipF: [], accelSlipR: [], brakeSlipF: [], brakeSlipR: [],
     // reference-speed grip: |lateral g| samples in a 55-65 mph window (≈ the
@@ -115,6 +122,13 @@ export function addAnalyticsFrame(an, t, d, ts = 0) {
     // Reference-speed grip: clean lateral g in a 55-65 mph window.
     const mph = t.speed * MS_TO_MPH;
     if (mph >= 55 && mph <= 65) an.lat60.push(Math.abs(d.g.lat));
+
+    // On-power speed histogram (see wotSpeed above). Full throttle and actually
+    // gaining speed — coasting at the limiter is not an acceleration opportunity.
+    if (t.throttle > 0.9 && d.g.long > 0.02) {
+      const b = Math.floor(t.speed / WOT_BIN_MS);
+      if (b >= 0 && b < WOT_BINS) an.wotSpeed[b]++;
+    }
 
     // CdA: fastest essentially-non-accelerating full-throttle clean frame ≈ true
     // terminal velocity, where engine power balances aero drag. The tight accel
@@ -410,7 +424,7 @@ export function buildAnalytics(an, raceFrames, dyno = {}) {
       shiftPerGear: dyno.shiftPerGear ?? [],
     },
 
-    gearing: gearingAdvice(dyno),
+    gearing: gearingAdvice(dyno, maxOf(an.speed), an.wotSpeed),
 
     powertrain: powertrainDiagnostics(an, muLat, zeroTo60, zeroTo100, dyno),
     handling: buildHandling(an),
@@ -833,7 +847,7 @@ function gradient(gArr, angleRad) {
 // (The CLIENT does that math from the ratios the driver enters — the packet has no
 // ratio values.) Here we supply the context: gear count, the flat-out shift RPM, and
 // the usable power-band edge, plus the MEASURED landings as a diagnostic overlay.
-function gearingAdvice(dyno) {
+function gearingAdvice(dyno, topSpeedMs, wotSpeed) {
   const pb = dyno.powerBand;
   const spg = dyno.shiftPerGear;
   const numGears = dyno.numGears || 0;
@@ -894,6 +908,18 @@ function gearingAdvice(dyno) {
     powerBandLoRpm,
     measured,
     finalDrive,
+    // The measured dyno + the speed it was making, shipped so the CLIENT can simulate
+    // candidate gear sets against this car's real power curve rather than assuming a
+    // shape. Together with finalDrive.topGearMaxRpm these give road speed per rpm
+    // directly off the telemetry, so the solver needs no final-drive or tyre-radius
+    // input from the driver.
+    powerBand: pb,
+    topSpeedMs: topSpeedMs > 0 ? round(topSpeedMs, 2) : null,
+    // Full-throttle-and-gaining frames per speed bin — the weighting for the
+    // final-drive solve. Sent raw; the client decides what to do with it.
+    wotSpeedHist: Array.isArray(wotSpeed) && wotSpeed.some((x) => x > 0)
+      ? { binMs: WOT_BIN_MS, counts: wotSpeed }
+      : null,
   };
 }
 
@@ -920,6 +946,15 @@ function linregress(xs, ys) {
   const rDen = Math.sqrt(den * (n * syy - sy * sy));
   const r = rDen === 0 ? 0 : (n * sxy - sx * sy) / rDen;
   return { slope, intercept, r2: r * r };
+}
+
+// Max of a numeric array without spreading it into apply() — these arrays run to tens
+// of thousands of samples and Math.max(...arr) blows the call stack at that size.
+function maxOf(arr) {
+  let m = 0;
+  if (!arr) return 0;
+  for (let i = 0; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+  return m;
 }
 
 function percentile(arr, p) {
