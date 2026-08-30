@@ -30,6 +30,21 @@ export interface Bracket {
   bounded: boolean;       // true when the channel has a known in-game range
 }
 
+// OPENING MOVE for a channel with no known in-game range. This used to HALVE (to go
+// lower) or DOUBLE (to go higher), on the reasoning that an unbounded search should open
+// aggressively. That is far too violent for the channels that actually lack rails: front
+// and rear springs, ride heights, and front and rear downforce are all 'pct' channels
+// whose real tuning moves are single-digit percentages.
+//
+// Measured on a real car, one run took front downforce 987 -> 431 and rear 1114 -> 572,
+// and rear spring 700 -> 350, with peak lateral grip falling from 1.96 to 1.83 across the
+// same step. Halving downforce is not a tuning nudge, it is a different car.
+//
+// A capped opening step costs a few extra runs before both bounds are known — after that
+// it bisects normally and converges just as fast — and it cannot wreck the setup.
+const OPEN_STEP = 0.15;
+const OPEN_PCT = Math.round(OPEN_STEP * 100);
+
 const snap = (v: number, step: number) => {
   const r = Math.round(v / step) * step;
   return Math.round(r * 1000) / 1000;
@@ -108,21 +123,24 @@ export function bracketFor(
     if (next === current) next = snap(current + (direction > 0 ? step : -step), step);
     rationale = `Optimum is bracketed between ${snap(lo, step)} and ${snap(hi, step)} — this is the midpoint. Each run halves what's left.`;
   } else if (direction < 0) {
-    // Only an upper bound (or none) → halve toward the floor.
-    const floor = lo ?? 0;
-    next = snap((floor + current) / 2, step);
-    if (next === current) next = snap(current - step, step);
-    rationale = lo == null
-      ? `No lower bound known yet — halving ${current} to open the search. If that overshoots, the next step comes back halfway.`
-      : `Halfway between the known-too-low ${snap(lo, step)} and the current ${current}.`;
+    if (lo != null) {
+      // A real lower bound is known → genuine bisection toward it.
+      next = snap((lo + current) / 2, step);
+      if (next === current) next = snap(current - step, step);
+      rationale = `Halfway between the known-too-low ${snap(lo, step)} and the current ${current}.`;
+    } else {
+      next = snap(current * (1 - OPEN_STEP), step);
+      if (next === current) next = snap(current - step, step);
+      rationale = `No lower bound known yet — opening the search ${OPEN_PCT}% below ${current}. Once a bound is found this bisects and converges quickly.`;
+    }
   } else {
-    // Only a lower bound (or none) → midpoint to the ceiling, or double if unbounded.
     if (hi != null) {
       next = snap((current + hi) / 2, step);
       rationale = `Halfway between the current ${current} and the known-too-high ${snap(hi, step)}.`;
     } else {
-      next = snap(current * 2, step);
-      rationale = `No upper bound known yet — doubling ${current} to open the search. If that overshoots, the next step comes back halfway.`;
+      next = snap(current * (1 + OPEN_STEP), step);
+      if (next === current) next = snap(current + step, step);
+      rationale = `No upper bound known yet — opening the search ${OPEN_PCT}% above ${current}. Once a bound is found this bisects and converges quickly.`;
     }
   }
 

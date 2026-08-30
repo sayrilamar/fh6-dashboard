@@ -180,13 +180,24 @@ function handlingDeltas(a: SessionAnalytics): Record<string, { d: number; why: s
   const usSev = isUS ? Math.max(0.4, sev((usRate - 1) / 4)) : 0;
   const causeTxt = `${p.trailBrake}/${p.power}/${p.grip} per-1k brake/power/grip`;
 
-  // Front toe — turn-in. Understeer → toe-OUT, which is POSITIVE in FH6.
-  o.frontToe = usSev > 0.05 ? { d: r1(0.1 + 0.1 * usSev), why: 'understeers — more front toe-OUT (toward +) sharpens turn-in' }
+  // TOE SIGN. In Forza the value convention is: POSITIVE = toe-IN (stability),
+  // NEGATIVE = toe-OUT (turn-in). Both toe channels used to be advised with the signs
+  // the other way round, and the likely reason is that Forza's own tuning UI has a
+  // long-standing bug where the "In"/"Out" labels are drawn on the wrong sides of the
+  // slider — read off the screen, the convention looks reversed.
+  //
+  // It was not a cosmetic error. Chasing a loose rear, the report walked rear toe from
+  // +0.4 to -4.8 against a -5.0 rail over 14 recorded runs, believing it was adding
+  // toe-IN to settle the car. Measured across those runs the power-oversteer rate ran
+  // 3.3 -> 57.5 per 1k cornering frames and slide events 78 -> ~300, correlation between
+  // rear toe and oversteer rate -0.67: every step "toward stability" made the rear
+  // looser. Front toe carried the same inversion and is corrected with it.
+  //
+  // Understeer wants front toe-OUT => NEGATIVE. A loose rear wants toe-IN => POSITIVE.
+  o.frontToe = usSev > 0.05 ? { d: -r1(0.1 + 0.1 * usSev), why: 'understeers — more front toe-OUT (toward −) sharpens turn-in' }
     : { d: 0, why: 'turn-in settled — hold' };
-  // Rear toe — the primary chassis lever for a loose rear: toe-IN steadies it, and
-  // toe-in is NEGATIVE in FH6.
-  o.rearToe = rearOS > 0.05 || rearLoose ? { d: -r1(0.1 + 0.1 * Math.max(rearOS, rearLoose ? 0.4 : 0)), why: `rear slides (${causeTxt}) — more rear toe-IN (toward −) steadies it` }
-    : usSev > 0.6 ? { d: 0.1, why: 'strong persistent push — trim rear toe-in (toward +) to free rotation' }
+  o.rearToe = rearOS > 0.05 || rearLoose ? { d: r1(0.1 + 0.1 * Math.max(rearOS, rearLoose ? 0.4 : 0)), why: `rear slides (${causeTxt}) — more rear toe-IN (toward +) steadies it` }
+    : usSev > 0.6 ? { d: -0.1, why: 'strong persistent push — trim rear toe-in (toward −) to free rotation' }
       : { d: 0, why: 'rear stable — hold' };
   // Front camber — mid-corner front grip.
   o.frontCamber = usSev > 0.05 ? { d: -r1(0.1 + 0.2 * usSev), why: 'front washes out — add negative front camber for grip at lean' }
@@ -2605,6 +2616,25 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
   );
 }
 
+// The planner's verdict for a session. Exported so the pre-run capture screen can offer
+// the ONE change the planner endorses, instead of every section's independent suggestion.
+export function planForSession(s: SessionSummary, sessions: SessionSummary[]): Plan | null {
+  const a = s.analytics;
+  if (!a) return null;
+  return buildPlan(
+    s,
+    sessions,
+    collectCandidates(
+      a,
+      (s.meta?.drivetrain || '').toUpperCase(),
+      pooledRideHeight(s, sessions),
+      pooledSymptoms(s, sessions),
+      pooledDamping(s, sessions),
+    ),
+    deltaLookup,
+  );
+}
+
 function Report({ s }: { s: SessionSummary }) {
   const a = s.analytics;
   const meta = useMeta();
@@ -2613,7 +2643,7 @@ function Report({ s }: { s: SessionSummary }) {
   const g = (v: number | null | undefined, d = 2) => (v != null ? fmt(v, d) : '–');
   // Computed once here and shared with every section via PlanCtx, so the whole report
   // reasons from one plan instead of each card deciding independently.
-  const plan = a ? buildPlan(s, meta.sessions, collectCandidates(a, (s.meta?.drivetrain || '').toUpperCase(), pooledRideHeight(s, meta.sessions), pooledSymptoms(s, meta.sessions), pooledDamping(s, meta.sessions)), deltaLookup) : null;
+  const plan = planForSession(s, meta.sessions);
 
   // A run's comparable time: a circuit fastest lap OR — for a point-to-point / sprint
   // (Rivals street races), which never cross start/finish so bestLap stays 0 — the

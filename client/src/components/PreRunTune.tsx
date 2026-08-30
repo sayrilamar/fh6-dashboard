@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { getLatest, useMeta, useTick } from '../store';
 import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
 import { solveGearing, finalDriveAdvice, contextFromAnalytics } from '../gearing';
+import { planForSession } from './Sessions';
 import type { TuneSnapshot, TuneLimits } from '../types';
 
 // Pre-run tune capture. Recording what's ACTUALLY on the car before the run (instead of
@@ -170,19 +171,50 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     return { ...o, ...gearRecs };
   }, [channels, carOrdinal, gearRecs]);
 
-  const pendingRecs = channels.filter((c) => {
-    const r = recs[c.key];
-    if (r == null) return false;
-    const cur = vals[c.key] === '' || vals[c.key] == null ? null : Number(vals[c.key]);
-    return cur == null || Math.abs(cur - r) > 1e-9;
-  });
+  // ONE CHANGE PER RUN.
+  //
+  // Every section computes its own recommendation independently, and this screen used to
+  // surface all of them at once behind an "Apply all recommended" button — with no
+  // reference to the planner at all. That is precisely the failure the planner exists to
+  // prevent, and it did happen: across 14 recorded runs on one car, single runs moved 15,
+  // 8, 7 and 9 channels at once.
+  //
+  // Worse than losing attribution, it disabled the safety net. experiments() only mines a
+  // before/after pair when EXACTLY ONE channel moved, so only 5 of 13 transitions
+  // qualified; rear toe was never once a single-channel change, so reviewChange() never
+  // judged it, it was never marked 'backfired', and decorate() never blocked it. It
+  // marched to its rail unchecked while rear grip fell 36%.
+  //
+  // The planner's pick is now the headline, blocked levers are withheld, and the bulk
+  // apply is gone.
+  const lastRun = useMemo(() => {
+    return [...meta.sessions]
+      .filter((x) => (carOrdinal == null || x.meta?.carOrdinal === carOrdinal) && x.analytics)
+      .sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+  }, [meta.sessions, carOrdinal]);
+  const plan = useMemo(() => (lastRun ? planForSession(lastRun, meta.sessions) : null), [lastRun, meta.sessions]);
+  const plannedKey = plan?.primary?.channel ?? null;
+  const blockedKeys = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of plan?.blocked ?? []) if (b.blocked) m.set(b.channel, b.blocked);
+    return m;
+  }, [plan]);
 
-  const applyAllRecs = () => {
-    setVals((p) => {
-      const n = { ...p };
-      for (const c of pendingRecs) n[c.key] = String(recs[c.key]);
-      return n;
-    });
+  const differsFromRec = (key: string) => {
+    const r = recs[key];
+    if (r == null) return false;
+    const cur = vals[key] === '' || vals[key] == null ? null : Number(vals[key]);
+    return cur == null || Math.abs(cur - r) > 1e-9;
+  };
+  // Only the planner's chosen lever is offered for one-click apply. Blocked levers are
+  // never offered — those are the ones already at a rail, or measured to have made the
+  // symptom worse.
+  const plannedChannel = plannedKey ? channels.find((c) => c.key === plannedKey) ?? null : null;
+  const planPending = !!plannedChannel && !blockedKeys.has(plannedChannel.key) && differsFromRec(plannedChannel.key);
+  const applyPlanned = () => {
+    if (!plannedChannel) return;
+    const r = recs[plannedChannel.key];
+    if (r != null) setVals((p) => ({ ...p, [plannedChannel.key]: String(r) }));
   };
 
   const snapshot = (): TuneSnapshot => {
@@ -224,12 +256,21 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
           </span>
         </header>
 
-        {pendingRecs.length > 0 && (
+        {planPending && plannedChannel && (
           <div className="note info modal-recbar">
             <span>
-              The report has {pendingRecs.length} recommended value{pendingRecs.length === 1 ? '' : 's'} you haven't entered yet.
+              Change <b>one thing</b> this run — the planner picked <b>{plannedChannel.label}</b>
+              {plan?.primary?.from != null && plan?.primary?.to != null
+                ? <> : {plan.primary.from}{plannedChannel.unit ?? ''} → <b>{plan.primary.to}{plannedChannel.unit ?? ''}</b></>
+                : null}
+              {plan?.primary?.why ? <span style={{ opacity: 0.8 }}> · {plan.primary.why}</span> : null}
             </span>
-            <button className="btn" onClick={applyAllRecs}>Apply all recommended</button>
+            <button className="btn" onClick={applyPlanned}>Apply it</button>
+          </div>
+        )}
+        {!planPending && plan?.status?.state === 'dialled-in' && (
+          <div className="note info modal-recbar">
+            <span>No symptom is above the action threshold — the car is dialled in. Change nothing and drive it.</span>
           </div>
         )}
 
@@ -261,6 +302,10 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
                 const rec = recs[c.key];
                 const cur = vals[c.key] === '' || vals[c.key] == null ? null : Number(vals[c.key]);
                 const differs = rec != null && (cur == null || Math.abs(cur - rec) > 1e-9);
+                // A lever the planner has ruled out — at a rail, or measured to have made
+                // the symptom worse. Show why instead of offering the value.
+                const blockedWhy = blockedKeys.get(c.key) ?? null;
+                const isPlanned = c.key === plannedKey;
                 return (
                   <div key={c.key} className="tune-row">
                     <label htmlFor={`tune-${c.key}`}>{c.label}{c.unit ? ` (${c.unit})` : ''}</label>
@@ -273,10 +318,17 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
                       placeholder="—"
                       onChange={(e) => setVals((p) => ({ ...p, [c.key]: e.target.value }))}
                     />
-                    {rec != null ? (
+                    {blockedWhy ? (
+                      <button className="rec-chip" disabled title={blockedWhy} style={{ opacity: 0.45, cursor: 'not-allowed' }}>
+                        blocked
+                      </button>
+                    ) : rec != null ? (
                       <button
-                        className={`rec-chip${differs ? ' on' : ''}`}
-                        title="Use the report's recommended value"
+                        className={`rec-chip${differs && isPlanned ? ' on' : ''}`}
+                        title={isPlanned
+                          ? "The planner's pick for this run — the one change to make"
+                          : 'Not this run\u2019s change. The planner picks ONE lever per run so the result stays attributable; moving several at once is what let a bad direction march unchecked.'}
+                        style={differs && !isPlanned ? { opacity: 0.55 } : undefined}
                         onClick={() => setVals((p) => ({ ...p, [c.key]: String(rec) }))}
                       >
                         {differs ? `rec ${rec}` : 'on rec'}
