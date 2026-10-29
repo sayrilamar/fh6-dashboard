@@ -94,12 +94,12 @@ const gainNote = (g: Gain, naive: number, applied: number): string =>
 // Phase-specific fixes for over/understeer (FH6 tuning order). Keyed by which
 // part of the corner the imbalance shows up in.
 const OVERSTEER_FIX: Record<string, string> = {
-  entry: 'Move Brake Balance ~2–3% FORWARD, soften the REAR ARB a couple clicks, lower the Deceleration diff, and add rear Toe-in (−0.1°, toe-in is negative). The rear steps out as you brake and turn in.',
+  entry: 'Move Brake Balance ~2–3% FORWARD, soften the REAR ARB a couple clicks, lower the Deceleration diff, and add rear Toe-in (+0.1°, toe-in is positive). The rear steps out as you brake and turn in.',
   mid: 'Soften the REAR spring, add a little rear Camber (−0.2°), and/or raise rear Aero. The rear runs out of grip through the middle of the corner.',
-  exit: 'Lower the Acceleration diff (counterintuitive but it calms power-on rotation), add rear Toe-in (−0.1°, toe-in is negative), and soften the REAR spring. The rear breaks loose as you pick up throttle.',
+  exit: 'Lower the Acceleration diff (counterintuitive but it calms power-on rotation), add rear Toe-in (+0.1°, toe-in is positive), and soften the REAR spring. The rear breaks loose as you pick up throttle.',
 };
 const UNDERSTEER_FIX: Record<string, string> = {
-  entry: 'Soften the FRONT ARB and front Rebound; reduce front Toe-in (move it toward +, i.e. toe-out). If it only pushes above ~100 mph, add front Aero.',
+  entry: 'Soften the FRONT ARB and front Rebound; reduce front Toe-in (move it toward −, i.e. toe-out). If it only pushes above ~100 mph, add front Aero.',
   mid: 'Soften the FRONT spring and add front Camber (−0.2°). Try front tire pressure ±1 psi.',
   exit: 'Lower the Acceleration diff and raise front Aero; stiffen the REAR ARB slightly to help the car rotate off the corner.',
 };
@@ -109,11 +109,11 @@ const UNDERSTEER_FIX: Record<string, string> = {
 const SLIDE_FIX: Record<string, { label: string; fix: string }> = {
   trailBrake: {
     label: 'rear locks & steps out under braking (trail-braking oversteer)',
-    fix: 'The rear is locking while you brake into the corner. Move Brake Balance ~3–5% FORWARD (less rear brake), drop Brake Pressure a couple %, soften the REAR ARB, and add rear Toe-in (−0.1°, toe-in is negative). If it snaps the instant you lift or turn in, soften rear Rebound too.',
+    fix: 'The rear is locking while you brake into the corner. Move Brake Balance ~3–5% FORWARD (less rear brake), drop Brake Pressure a couple %, soften the REAR ARB, and add rear Toe-in (+0.1°, toe-in is positive). If it snaps the instant you lift or turn in, soften rear Rebound too.',
   },
   power: {
     label: 'rear spins up under power (power-oversteer)',
-    fix: 'The rear lights up as you feed in throttle. Lower the Acceleration diff, add rear Toe-in (−0.1°, toe-in is negative), soften the REAR spring, and roll into the throttle more progressively. Wider/stickier rear tires help if it persists.',
+    fix: 'The rear lights up as you feed in throttle. Lower the Acceleration diff, add rear Toe-in (+0.1°, toe-in is positive), soften the REAR spring, and roll into the throttle more progressively. Wider/stickier rear tires help if it persists.',
   },
   grip: {
     label: 'rear runs out of lateral grip (grip-limited oversteer)',
@@ -133,12 +133,13 @@ interface HandlingSettings {
   caster?: number; frontARB?: number; rearARB?: number; frontSpring?: number; rearSpring?: number;
 }
 const HANDLING_FIELDS: { key: keyof HandlingSettings; label: string; base: number; mode: 'abs' | 'pct'; min?: number; max?: number; step: number; unit?: string }[] = [
-  // TOE SIGN CONVENTION (FH6): NEGATIVE = toe-IN, POSITIVE = toe-OUT — front and rear.
+  // TOE SIGN CONVENTION (FH6): POSITIVE = toe-IN, NEGATIVE = toe-OUT — front and rear.
+  // (Forza's tuning screen draws the In/Out labels on the wrong sides; trust the value.)
   // Toe-in stabilises that axle; toe-out sharpens/frees it. So a loose rear wants a
-  // NEGATIVE change and an understeering front wants a POSITIVE one. Getting this
+  // POSITIVE change and an understeering front wants a NEGATIVE one. Getting this
   // backwards actively makes the car worse, so keep the sign and the wording together.
   { key: 'frontToe', label: 'Front · Toe', base: 0.0, mode: 'abs', min: -1, max: 1, step: 0.1, unit: '°' },
-  { key: 'rearToe', label: 'Rear · Toe', base: -0.1, mode: 'abs', min: -1, max: 1, step: 0.1, unit: '°' },
+  { key: 'rearToe', label: 'Rear · Toe', base: 0.1, mode: 'abs', min: -1, max: 1, step: 0.1, unit: '°' },
   { key: 'frontCamber', label: 'Front · Camber', base: -1.5, mode: 'abs', min: -5, max: 0.5, step: 0.1, unit: '°' },
   { key: 'rearCamber', label: 'Rear · Camber', base: -1.2, mode: 'abs', min: -5, max: 0.5, step: 0.1, unit: '°' },
   { key: 'caster', label: 'Caster', base: 5.0, mode: 'abs', min: 3, max: 7, step: 0.1, unit: '°' },
@@ -1927,7 +1928,7 @@ const ISSUE_GUIDE: Record<string, { title: string; fix: string }> = {
   },
   oversteer: {
     title: 'Oversteer — rear steps out',
-    fix: 'Soften the REAR Anti-roll Bar a few clicks. Loose on entry/lift? Lower Deceleration diff and add rear Toe-in (−0.1°, toe-in is negative). Loose only at speed → add rear Aero.',
+    fix: 'Soften the REAR Anti-roll Bar a few clicks. Loose on entry/lift? Lower Deceleration diff and add rear Toe-in (+0.1°, toe-in is positive). Loose only at speed → add rear Aero.',
   },
   'tire-hot': {
     title: 'Tires too HOT (temperature)',
