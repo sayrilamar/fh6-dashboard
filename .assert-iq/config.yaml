@@ -172,8 +172,10 @@ oracle:
 # uses and fill in the matching sub-section. Comment out the other.
 # -----------------------------------------------------------------------------
 tracker:
-  type: "github"        # options: github | ado | jira | linear | none
-  system: "github"      # alias used by hotspot-map, release-confidence and other
+  # 2026-10-29: work is tracked as markdown files in ./stories/ (todo/ and
+  # done/ folders, IDs FH6-<n>); see stories/README.md. There is no tracker API.
+  type: "none"          # options: github | ado | jira | linear | none
+  system: "markdown_only" # alias used by hotspot-map, release-confidence and other
                         # skills; mirror of `type` (github | ado | jira | linear |
                         # markdown_only | none).
 
@@ -351,11 +353,11 @@ traceability:
 # test_root: path to the test directory (used by skills that scan for tests).
 # -----------------------------------------------------------------------------
 test_framework:
-  primary: "<framework>"  # options: playwright | cypress | selenium | webdriverio |
+  primary: "playwright"   # options: playwright | cypress | selenium | webdriverio |
                           #          restassured | pytest | unittest | jest | vitest |
                           #          mocha | jasmine | junit | testng | nunit | xunit |
                           #          rspec | go-test | cargo-test | phpunit | other
-  language: "<language>"  # options: typescript | javascript | python | java | csharp |
+  language: "typescript"  # options: typescript | javascript | python | java | csharp |
                           #          kotlin | go | rust | ruby | swift | php | other
   test_command: "<command to run tests>"       # e.g. "npm test" | "pytest" | "dotnet test" | "go test ./..."
   targeted_test_command: "<command to run 1 test>" # e.g. "pytest path/test.py::TestClass::test_method"
@@ -363,11 +365,13 @@ test_framework:
   test_root: "./tests"                          # adjust to your repo layout
 
   # Optional: additional frameworks (e.g. unit + e2e in same repo)
-  # secondary:
-  #   - primary: "jest"
-  #     language: "typescript"
-  #     test_command: "npm run test:unit"
-  #     test_root: "./src"
+  # Chosen 2026-10-29: Vitest for pure logic, Playwright (primary) for end to
+  # end. The commands above stay unset until the first test stories add the
+  # npm scripts.
+  secondary:
+    - primary: "vitest"
+      language: "typescript"
+      test_root: "./tests/unit"
 
   # ---------------------------------------------------------------------------
   # API test generation (used by generate-automated-api-test)
@@ -1230,7 +1234,17 @@ story_estimation:
 
   # reference_stories: team-agreed exemplars used as the anchor when history
   # is thin (typical at early tier).
-  reference_stories: []
+  # Pointed by the team 2026-10-29 (commit SHAs; no tracker history yet).
+  reference_stories:
+    - id: "5cf8628"
+      points: 1
+      summary: "Final-drive recommendation stops chasing its own output (client tuning logic, 2 files)"
+    - id: "2de054d+de877f1"
+      points: 2
+      summary: "Race-end auto-stop in the recorder; second attempt after a live measurement (server, 3 files)"
+    - id: "63edab0"
+      points: 5
+      summary: "Minimum-time gear solver against the measured power band (new client module, 4 files)"
   #   - id: "AB#1201"
   #     points: 3
   #     summary: "Add a field to an existing form + API, covered module"

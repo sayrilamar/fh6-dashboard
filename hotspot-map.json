@@ -1,0 +1,432 @@
+{
+  "generated_at": "2026-10-29T19:15:08Z",
+  "commit_sha": "1052af109b34824440e28b5edc548e753fa3a1e6",
+  "maturity_tier": "early",
+  "refresh_trigger": "on_demand",
+  "mode": "churn_only (early tier): Volatility Watchlist, no HRI, no tiers",
+  "scope": {
+    "used": [
+      "client/src/**",
+      "server/**"
+    ],
+    "configured_module_globs_matched": 0,
+    "note": "configured globs (src/**, lib/**, app/**, services/**, packages/**) match no files in this repo; run-time scope used, config unchanged"
+  },
+  "module_granularity": {
+    "configured": "directory",
+    "used": "file",
+    "note": "directory granularity yields 3 modules, too few to percentile-rank; directory roll-up included"
+  },
+  "volatility": {
+    "lookback_days": 90,
+    "excluded_commits": [
+      "df3fe573844b02f2b0e3ab23b856d887671c21fd"
+    ],
+    "exclusion_reason": "root commit creates every file; counted as creation, not churn",
+    "score": "mean of percentile ranks of commit count and lines added+deleted across the files in scope, mapped 90th+ \u2192 10 \u2026 <10th \u2192 1",
+    "files_in_scope": 33,
+    "uncommitted_changes_not_counted": [
+      "client/src/components/Sessions.tsx",
+      "client/src/handling.ts (new)",
+      "server/simulator.js"
+    ]
+  },
+  "defect_density_lookback_days": 180,
+  "watchlist": [
+    {
+      "module": "client/src/components/Sessions.tsx",
+      "V": 10,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 4,
+      "loc_changed": 283,
+      "lines": 2909,
+      "unit_tests": "none (handlingDeltas moved out and tested, FH6-2/3)",
+      "suggested_control": "Extract the next pure pieces (collectCandidates, the *Target() popup functions) and unit-test them; FH6-10/11 cover the three surfaces end to end",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/components/PreRunTune.tsx",
+      "V": 10,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 3,
+      "loc_changed": 165,
+      "lines": 371,
+      "unit_tests": "none",
+      "suggested_control": "FH6-4 + FH6-5 (final-drive extraction and tests); FH6-11 checks it agrees with the report",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/bisect.ts",
+      "V": 9,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 3,
+      "loc_changed": 108,
+      "lines": 191,
+      "unit_tests": "tests/unit/bisect.test.ts (bracketFor)",
+      "suggested_control": "Covered. runsRemaining is untested; keep the suite green on every change",
+      "contributing_defects": null
+    },
+    {
+      "module": "server/recorder.js",
+      "V": 9,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 2,
+      "loc_changed": 76,
+      "lines": 638,
+      "unit_tests": "none",
+      "suggested_control": "FH6-6 covers only the folder override. Race-end detection and duration trimming, where the recorder's escapes were, have no story yet",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/gearing.ts",
+      "V": 8,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 450,
+      "lines": 450,
+      "unit_tests": "tests/unit/gearing.test.ts (solveGearing, fallback advice)",
+      "suggested_control": "solveFinalDrive's solved path is untested; FH6-4/5 add the target",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/store.ts",
+      "V": 8,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 103,
+      "lines": 367,
+      "unit_tests": "none",
+      "suggested_control": "Client state and WebSocket plumbing; low tuning impact; review on change",
+      "contributing_defects": null
+    },
+    {
+      "module": "server/analytics.js",
+      "V": 7,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 41,
+      "lines": 969,
+      "unit_tests": "none",
+      "suggested_control": "Every symptom rate the advice reads is computed here (969 lines). Its exports are pure, so it is unit-testable today without production changes; no story yet",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/tune.ts",
+      "V": 7,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 24,
+      "lines": 219,
+      "unit_tests": "none",
+      "suggested_control": "Adaptive step engine (learnGain/applyGain); add to the unit suite",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/components/GripBalance.tsx",
+      "V": 7,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 23,
+      "lines": 104,
+      "unit_tests": "none",
+      "suggested_control": "Display only; one convention fix (d81512d); visual check on change",
+      "contributing_defects": null
+    },
+    {
+      "module": "client/src/components/TractionCircle.tsx",
+      "V": 7,
+      "C": null,
+      "D": null,
+      "HRI": null,
+      "hri_basis": "V_only",
+      "tier": null,
+      "commits": 1,
+      "loc_changed": 18,
+      "lines": 103,
+      "unit_tests": "none",
+      "suggested_control": "Display only; same convention fix (d81512d); visual check on change",
+      "contributing_defects": null
+    }
+  ],
+  "all_files": [
+    {
+      "module": "client/src/components/Sessions.tsx",
+      "V": 10,
+      "commits": 4,
+      "loc_changed": 283
+    },
+    {
+      "module": "client/src/components/PreRunTune.tsx",
+      "V": 10,
+      "commits": 3,
+      "loc_changed": 165
+    },
+    {
+      "module": "client/src/bisect.ts",
+      "V": 9,
+      "commits": 3,
+      "loc_changed": 108
+    },
+    {
+      "module": "server/recorder.js",
+      "V": 9,
+      "commits": 2,
+      "loc_changed": 76
+    },
+    {
+      "module": "client/src/gearing.ts",
+      "V": 8,
+      "commits": 1,
+      "loc_changed": 450
+    },
+    {
+      "module": "client/src/store.ts",
+      "V": 8,
+      "commits": 1,
+      "loc_changed": 103
+    },
+    {
+      "module": "server/analytics.js",
+      "V": 7,
+      "commits": 1,
+      "loc_changed": 41
+    },
+    {
+      "module": "client/src/tune.ts",
+      "V": 7,
+      "commits": 1,
+      "loc_changed": 24
+    },
+    {
+      "module": "client/src/components/GripBalance.tsx",
+      "V": 7,
+      "commits": 1,
+      "loc_changed": 23
+    },
+    {
+      "module": "client/src/components/TractionCircle.tsx",
+      "V": 7,
+      "commits": 1,
+      "loc_changed": 18
+    },
+    {
+      "module": "client/src/components/Laps.tsx",
+      "V": 7,
+      "commits": 1,
+      "loc_changed": 12
+    },
+    {
+      "module": "client/src/plan.ts",
+      "V": 6,
+      "commits": 1,
+      "loc_changed": 8
+    },
+    {
+      "module": "server/index.js",
+      "V": 6,
+      "commits": 1,
+      "loc_changed": 8
+    },
+    {
+      "module": "client/src/types.ts",
+      "V": 6,
+      "commits": 1,
+      "loc_changed": 5
+    },
+    {
+      "module": "client/src/App.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Attitude.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Canvas.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Card.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/EngineCluster.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Inputs.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Notes.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Panel.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/PowerBand.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Suspension.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/Tires.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/components/TopBar.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/constants.ts",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/format.ts",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/main.tsx",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "client/src/styles.css",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "server/metrics.js",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "server/parser.js",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    },
+    {
+      "module": "server/simulator.js",
+      "V": 1,
+      "commits": 0,
+      "loc_changed": 0
+    }
+  ],
+  "directory_rollup": [
+    {
+      "module": "client/src/components/",
+      "loc_changed": 501,
+      "files": 16,
+      "commits": 6
+    },
+    {
+      "module": "client/src/",
+      "loc_changed": 698,
+      "files": 11,
+      "commits": 6
+    },
+    {
+      "module": "server/",
+      "loc_changed": 125,
+      "files": 6,
+      "commits": 3
+    }
+  ],
+  "tier_counts": {
+    "critical": 0,
+    "medium": 0,
+    "low": 0,
+    "watchlist": 10
+  },
+  "hri_basis_distribution": {
+    "V+C+D": 0,
+    "V+C": 0,
+    "V+D": 0,
+    "C+D": 0,
+    "single_signal": 33
+  },
+  "ungraded_signals": [
+    {
+      "signal": "complexity",
+      "reason": "complexity_source_unset",
+      "detail": "hotspot_map.complexity.source is 'none'"
+    },
+    {
+      "signal": "defect_density",
+      "reason": "tracker_none",
+      "detail": "tracker.type is 'none' (markdown stories in stories/); the skill has no query template for it"
+    }
+  ]
+}
