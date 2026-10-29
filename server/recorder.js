@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TIRE } from './metrics.js';
 import { freshAnalytics, addAnalyticsFrame, buildAnalytics } from './analytics.js';
+import { shouldBegin, freshRaceTracker, trackFrame } from './capture-gate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_DIR = path.join(__dirname, '..', 'sessions');
@@ -21,29 +22,7 @@ const worseLevel = (a, b) => (LEVEL_RANK[b] > LEVEL_RANK[a] ? b : a);
 // grip); p99 is the sustained limit a tuner actually cares about.
 const P_GRIP = 0.99;
 
-// ---- Auto-stop -------------------------------------------------------------------
-// A race capture should end itself; a free-roam capture should not, because free roam
-// has no end. Two signals, because neither alone is enough:
-//
-//   * isRaceOn drops whenever gameplay stops — pause, menu, OR the post-race results
-//     screen. It cannot tell a finish from a pause, and pauses are long: one recorded
-//     run sat paused for 38 s mid-race. So the idle timeout is deliberately generous.
-//     Nothing is lost by waiting, because frames with isRaceOn false are never captured
-//     anyway — the only cost of a late stop is a stale REC light.
-//   * currentRaceTime RESETTING is unambiguous: the clock only returns to zero when a
-//     new event starts, so the run being recorded is definitively over. This is what
-//     stops two races landing in one file if the driver queues straight into another.
-const AUTO_STOP_IDLE_MS = 60000; // gameplay gone this long => the run is over
-const RACE_RESET_S = 5;          // clock dropping this far back => a new event began
-const RACE_MIN_S = 5;            // clock past this => this really is a race, not free roam
-// Odometer reset. Measured at a real FH6 finish: distanceTraveled went 5950 -> 249 while
-// lapNumber ticked 0 -> 1 and lastLap filled in with the finishing time. The odometer only
-// goes backwards like this when the event ends and the game drops you back out, so it is
-// the definitive marker. Requiring a substantial high-water mark AND a fall to under half
-// of it keeps rewind (which claws back a few hundred metres at most) from tripping it,
-// and skips the negative distance the packet reports on the grid before the lights go out.
-const DIST_MIN_M = 500;
-const DIST_RESET_FRACTION = 0.5;
+// When a capture begins and when a race capture ends itself: see capture-gate.js.
 
 export class Recorder {
   constructor({ autoRecover = true } = {}) {
@@ -59,10 +38,10 @@ export class Recorder {
   }
 
   // Arm the recorder. Actual capture (and the session's car identity) is deferred
-  // to the first frame with a real, spawned car — so pressing RECORD on a race
-  // grid (which reports a "#0 / FWD / 0cyl" placeholder until the green light)
-  // still captures the launch AND the correct drivetrain. Free roam (car already
-  // valid) begins on the very next frame.
+  // to the first frame with a real car that holds a race position or is moving — so
+  // pressing RECORD on the pre-race screen or a race grid (which reports a "#0 / FWD /
+  // 0cyl" placeholder until the green light) still captures the launch AND the correct
+  // drivetrain, without the parked pre-race seconds. Free roam begins once the car moves.
   start(meta = {}) {
     if (this.active) this.stop();
     this.armed = true;
@@ -87,18 +66,15 @@ export class Recorder {
     this.active = true;
     this.armed = false;
     this.prev = { speedMs: null, ts: 0, gear: null, rpm: 0, throttle: 0 };
-    this.lastRaceOnTs = 0;   // last frame with gameplay actually running
-    this.maxRaceTime = 0;    // high-water mark of the race clock
-    this.maxDistance = 0;    // high-water mark of the odometer
-    this.sawRace = false;    // this capture is a race, not free roam
+    this.race = freshRaceTracker();
   }
 
   add(frame) {
     if (this.armed) {
       const t = frame.t;
-      // A spawned car reports a non-zero ordinal; the placeholder is 0. Wait for
-      // that + the sim running, then take the identity from the telemetry itself.
-      if (!t.isRaceOn || !(t.carOrdinal > 0)) return;
+      // Wait for a frame that belongs to the run, then take the car's identity from
+      // the telemetry itself.
+      if (!shouldBegin(t)) return;
       this._begin({
         carName: this.pendingCarName,
         carOrdinal: t.carOrdinal, carClass: t.carClass, carPI: t.carPI,
@@ -108,38 +84,12 @@ export class Recorder {
       });
     }
     if (!this.active || !this.session) return null;
-    const t = frame.t;
 
-    if (!t.isRaceOn) {
-      // Paused, in a menu, or sitting on the results screen. Either way nothing is
-      // captured; the only question is whether the run has ended.
-      if (this.sawRace && this.lastRaceOnTs && frame.ts - this.lastRaceOnTs >= AUTO_STOP_IDLE_MS) {
-        return this.stop();
-      }
-      return null;
-    }
-
-    // THE FINISH. Either marker means the recorded event is over; stop BEFORE writing this
-    // frame so the aftermath never lands in the session's file.
-    //
-    // The odometer reset is the one that actually fires in practice. The other two
-    // detectors here were both written from assumptions and both missed a real finish:
-    // isRaceOn came back after only 15s (far inside the 60s idle timeout), and
-    // currentRaceTime kept counting straight through the finish rather than resetting.
-    if (this.sawRace && this.maxDistance > DIST_MIN_M
-        && t.distanceTraveled < this.maxDistance * DIST_RESET_FRACTION) {
-      return this.stop();
-    }
-    if (this.sawRace && t.currentRaceTime < this.maxRaceTime - RACE_RESET_S) {
-      return this.stop();
-    }
-
-    this.lastRaceOnTs = frame.ts;
-    if (t.currentRaceTime > this.maxRaceTime) this.maxRaceTime = t.currentRaceTime;
-    if (t.distanceTraveled > this.maxDistance) this.maxDistance = t.distanceTraveled;
-    // A race has a running clock and a grid position. Free roam has neither, so a
-    // free-roam capture never arms the auto-stop and stays under manual control.
-    if (t.currentRaceTime > RACE_MIN_S || t.racePosition > 0) this.sawRace = true;
+    // Paused, in a menu, or on the results screen: nothing is captured. At the finish,
+    // stop BEFORE writing this frame so the aftermath never lands in the session's file.
+    const step = trackFrame(this.race, frame.t, frame.ts);
+    if (step === 'stop') return this.stop();
+    if (step === 'skip') return null;
 
     this.stream.write(JSON.stringify(frame) + '\n');
     this.session.frames++;
@@ -169,7 +119,7 @@ export class Recorder {
     // durationSec badly — one recorded run reported 447 s for 143 s of driving.
     // Guard the floor: a session stopped before any gameplay frame arrived has no
     // lastRaceOnTs, and a clock skew must never produce a negative duration.
-    const endedAt = Math.max(this.lastRaceOnTs || 0, this.session.startedAt);
+    const endedAt = Math.max(this.race.lastRaceOnTs || 0, this.session.startedAt);
     return summarize(this.session, endedAt || Date.now());
   }
 
