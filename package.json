@@ -11,12 +11,14 @@
     "sim": "node server/simulator.js",
     "build": "npm --prefix client install && npm --prefix client run build",
     "start": "node server/index.js",
-    "setup": "npm install && npm --prefix client install"
+    "setup": "npm install && npm --prefix client install",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.2.5",
+    "vitest": "^4.1.12"
   }
 }
