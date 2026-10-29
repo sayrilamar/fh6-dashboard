@@ -2,5 +2,51 @@
   "schema_version": "1.0",
   "description": "Append-only log of dream cycles with memory versioning for reproducibility",
   "dream_cycles": [
+    {
+      "cycle_id": "dream-20261029T150002Z",
+      "status": "completed",
+      "started_at": "2026-10-29T15:00:02.908336Z",
+      "completed_at": "2026-10-29T15:06:12.574374Z",
+      "maturity_tier": "early",
+      "memory_version_before": "sha256-v2:02b03c420506c82c9dbb44bcb6ecf8e73e9f95bb89b1e1f9d4d15e2573ac1b62",
+      "memory_version_after": "sha256-v2:b0b26ceb3646f57d54e6c77cc923a092d3eff221a7ca08b48657d95ea37518fc",
+      "snapshot": ".assert-iq/dreaming/.snapshots/mem-20261029T150002Z.tar.gz",
+      "sanity": {
+        "clean": false,
+        "topics": 4,
+        "issues": 3,
+        "detail": {
+          "cycles": 3,
+          "stale_topics": 0,
+          "contradictions": 0,
+          "granularity": 0
+        }
+      },
+      "regression": null,
+      "memory_changed": true
+    },
+    {
+      "cycle_id": "dream-20261029T174623Z",
+      "status": "completed",
+      "started_at": "2026-10-29T17:46:23.492165Z",
+      "completed_at": "2026-10-29T17:48:07.289016Z",
+      "maturity_tier": "early",
+      "memory_version_before": "sha256-v2:d43221e2c198b747a4c75f2cdc47aaaaf3ede9002edef8daa1df60e552b2c612",
+      "memory_version_after": "sha256-v2:89a07f829f8f87982c55bd4245183b2b41e11ab837ca7568c8503a4ccee7af37",
+      "snapshot": ".assert-iq/dreaming/.snapshots/mem-20261029T174623Z.tar.gz",
+      "sanity": {
+        "clean": true,
+        "topics": 4,
+        "issues": 0,
+        "detail": {
+          "cycles": 0,
+          "stale_topics": 0,
+          "contradictions": 0,
+          "granularity": 0
+        }
+      },
+      "regression": null,
+      "memory_changed": true
+    }
   ]
 }
