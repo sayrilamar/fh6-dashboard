@@ -145,7 +145,11 @@ function buildPacket(s) {
   wf(O.suspTravelMFL, s.norm.fl * 0.16); wf(O.suspTravelMFR, s.norm.fr * 0.16);
   wf(O.suspTravelMRL, s.norm.rl * 0.16); wf(O.suspTravelMRR, s.norm.rr * 0.16);
 
-  buf.writeInt32LE(2523123456 | 0, O.carOrdinal);
+  // Must be POSITIVE: the recorder treats ordinal <= 0 as the pre-spawn placeholder and
+  // waits forever. (The old 2523123456 overflowed s32 to a negative.) Keep it clear of
+  // real FH6 ordinals too — tunes and bisection history are keyed by ordinal, so a
+  // collision would leak synthetic runs into a real car's tuning loop.
+  buf.writeInt32LE(999999, O.carOrdinal);
   buf.writeInt32LE(5, O.carClass); // S1-ish
   buf.writeInt32LE(823, O.carPI);
   buf.writeInt32LE(1, O.drivetrainType); // RWD
