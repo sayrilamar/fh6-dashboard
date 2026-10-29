@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "verdicts_recorded": 3,
+  "verdicts_by_band": {
+    "green": 3,
+    "amber": 0,
+    "red": 0,
+    "ungraded": 0
+  },
+  "verdicts_by_type": {
+    "pr_risk_assessment": 3,
+    "release_confidence": 0,
+    "hotspot_map": 0,
+    "other": 0
+  },
+  "verdicts_with_escapes": 0,
+  "last_updated": "2026-08-11T20:58:33.254755Z",
+  "archive_paths": []
+}

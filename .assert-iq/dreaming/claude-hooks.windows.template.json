@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$r = if ($env:CLAUDE_PLUGIN_ROOT) { $env:CLAUDE_PLUGIN_ROOT } else { '__PACK_ROOT__' }; $env:AIQ_PACK_ROOT = $r; $s = Join-Path $r '.assert-iq\\dreaming\\scripts\\dream-gate.ps1'; if (-not (Test-Path $s)) { exit 0 }; & $s"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$r = if ($env:CLAUDE_PLUGIN_ROOT) { $env:CLAUDE_PLUGIN_ROOT } else { '__PACK_ROOT__' }; $env:AIQ_PACK_ROOT = $r; $s = Join-Path $r '.assert-iq\\dreaming\\scripts\\dream-record-session.ps1'; if (-not (Test-Path $s)) { exit 0 }; & $s"
+          }
+        ]
+      }
+    ]
+  }
+}

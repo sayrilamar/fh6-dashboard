@@ -1,0 +1,7 @@
+{
+  "capture_date": "2026-05-01T00:00:00Z",
+  "escape_rate_per_quarter": 12,
+  "triage_hours_per_quarter": 200,
+  "cycle_time_days_pr_to_release": 18,
+  "notes": "Pre-QI adoption baseline. Measured from incident tracking and engineer timesheet sampling. Update this with your team's actual pre-QI metrics for accurate ROI tracking."
+}

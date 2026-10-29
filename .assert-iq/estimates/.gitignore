@@ -1,0 +1,9 @@
+# Story-estimate log written by /estimate-story — local only by default.
+# One JSONL line per estimate under archive/YYYY/MM/. It records levels,
+# never people, but it is still the team's planning data, not pack content.
+#
+# IMPORTANT — additive patterns only, never negations (`!pattern`).
+# A .gitignore deeper in the tree outranks .git/info/exclude, so a negation
+# here would silently re-include files and defeat a trial-mode install.
+# Enforced by unit-gitignore-hygiene.sh.
+archive/

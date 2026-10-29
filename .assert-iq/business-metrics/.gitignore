@@ -1,0 +1,12 @@
+# Business-impact reports are client-account assets — generated, not tracked.
+# `report_sink` in .assert-iq/config.yaml writes them under reports/.
+# baseline.json IS tracked: it is the team's pre-QI reference data.
+#
+# IMPORTANT — additive patterns only, never negations (`!pattern`).
+# A .gitignore deeper in the tree outranks .git/info/exclude, so a negation
+# here silently RE-INCLUDES the file and defeats a trial-mode install. This
+# file previously used `*.html` / `*.json` plus `!baseline.json` /
+# `!.gitignore`, which is exactly why those two showed up in `git status`
+# after `--mode=trial`.
+# Enforced by unit-gitignore-hygiene.sh.
+reports/

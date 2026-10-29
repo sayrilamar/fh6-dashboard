@@ -1,0 +1,33 @@
+{
+  "// Notes": [
+    "These settings wire the Assert.IQ Agent Pack into VS Code + Copilot.",
+    "Setting names may vary slightly across VS Code / Copilot versions; adjust as needed.",
+    "The intent is: load instruction files automatically, and look for prompt files",
+    "in both .github/prompts/ (Copilot default) and .github/skills/<name>/ (this pack).",
+    "chat.hookFilesLocations points VS Code at the pack's own rendered",
+    "session-events.json (a clean {hooks:{SessionStart,Stop}} file VS Code Copilot",
+    "parses natively). The .claude/* paths are disabled here so VS Code does NOT",
+    "read .claude/settings.json — that file carries a Claude-only 'permissions' key",
+    "VS Code's hook loader rejects, which silently stops Dreaming from firing.",
+    "Claude Code reads .claude/settings.json natively (not via this setting), so",
+    "both harnesses fire from one rendered source without double-firing."
+  ],
+  "chat.promptFiles": true,
+  "chat.promptFilesLocations": {
+    ".github/prompts": true,
+    ".github/skills": true
+  },
+  "chat.instructionsFilesLocations": {
+    ".github/instructions": true
+  },
+  "chat.hookFilesLocations": {
+    "./.assert-iq/dreaming/session-events.json": true,
+    ".claude/settings.json": false,
+    ".claude/settings.local.json": false,
+    "~/.claude/settings.json": false
+  },
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "files.exclude": {
+    "**/.assert-iq/runs": true
+  }
+}

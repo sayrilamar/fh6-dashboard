@@ -1,0 +1,12 @@
+{
+  "runs_total": 0,
+  "runs_by_type": {
+    "pr_assessment": 0,
+    "release_confidence": 0,
+    "coverage_analysis": 0,
+    "memory_health": 0,
+    "custom": 0
+  },
+  "last_run": null,
+  "schema_version": "1.0"
+}

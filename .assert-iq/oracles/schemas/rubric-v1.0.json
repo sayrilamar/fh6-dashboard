@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://assert-iq.io/schemas/rubric-v1.0.json",
+  "title": "Assert.IQ Rubric Schema v1.0",
+  "description": "JSON Schema for versioned acceptance contracts (rubrics) used by oracle grading",
+  "type": "object",
+  "required": ["rubric_id", "artifact_type", "title", "dimensions", "passing_criteria", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "rubric_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+-v[0-9]+\\.[0-9]+$",
+      "description": "Immutable rubric identifier (e.g., test-unit-v1.0)"
+    },
+    "artifact_type": {
+      "type": "string",
+      "enum": ["automated-unit-test", "automated-integration-test", "bug-report", "test-plan", "manual-test-case", "code-review", "custom"],
+      "description": "Type of artifact this rubric evaluates"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable rubric name"
+    },
+    "description": {
+      "type": "string",
+      "description": "What this rubric is for and when to use it"
+    },
+    "maturity_tiers": {
+      "type": "array",
+      "items": { "enum": ["early", "mid", "higher"] },
+      "description": "Which maturity tiers this rubric applies to"
+    },
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "weight", "criterion", "levels"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "description": "Unique dimension identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of this dimension"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "Relative weight in overall scoring (0.0–1.0)"
+          },
+          "criterion": {
+            "type": "string",
+            "description": "What is being evaluated (the criterion)"
+          },
+          "levels": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["level", "definition"],
+              "additionalProperties": false,
+              "properties": {
+                "level": {
+                  "type": "string",
+                  "enum": ["PASS", "CONDITIONAL", "FAIL"],
+                  "description": "Verdict level"
+                },
+                "definition": {
+                  "type": "string",
+                  "description": "Definition of what this level means"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "passing_criteria": {
+      "type": "string",
+      "description": "Logic for overall verdict (e.g., 'All PASS', 'weighted avg >= 0.85')"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["author", "created_at", "version"],
+      "additionalProperties": true,
+      "properties": {
+        "author": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "version": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://assert-iq.io/schemas/rubric-v1.0.json",
+  "rubric_id": "bug-report-v1.0",
+  "artifact_type": "bug-report",
+  "title": "Bug Report Acceptance Contract",
+  "description": "Criteria for high-quality bug reports that enable fast triage and reproduction",
+  "maturity_tiers": ["early", "mid", "higher"],
+  "dimensions": [
+    {
+      "id": "reproducibility",
+      "name": "Reproducibility",
+      "weight": 1.0,
+      "criterion": "Someone else can reproduce the bug following the steps",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Step-by-step reproduction provided; includes environment (OS, version, config)"
+        },
+        {
+          "level": "CONDITIONAL",
+          "definition": "Reproduction steps provided but missing some context (version, browser, etc.)"
+        },
+        {
+          "level": "FAIL",
+          "definition": "No reproduction steps or only vague description"
+        }
+      ]
+    },
+    {
+      "id": "expected_vs_actual",
+      "name": "Expected vs. Actual",
+      "weight": 0.95,
+      "criterion": "Report distinguishes what should happen from what actually happened",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Both expected and actual behavior clearly documented with examples"
+        },
+        {
+          "level": "CONDITIONAL",
+          "definition": "Both present but one is vague or inferred"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Only describes symptoms; doesn't clarify expected behavior"
+        }
+      ]
+    },
+    {
+      "id": "severity_justification",
+      "name": "Severity justification",
+      "weight": 0.7,
+      "criterion": "Severity claim is backed by business/user impact",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Severity justified: describes who is affected and what they can't do"
+        },
+        {
+          "level": "CONDITIONAL",
+          "definition": "Severity reasonable but impact not fully explained"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Severity not justified; arbitrary-seeming priority"
+        }
+      ]
+    }
+  ],
+  "passing_criteria": "reproducibility=PASS AND expected_vs_actual>=CONDITIONAL AND weighted avg >= 0.85",
+  "metadata": {
+    "author": "assert-iq-pack",
+    "created_at": "2026-08-11T00:00:00Z",
+    "version": "1.0",
+    "tags": ["bug-report", "acceptance-contract"]
+  }
+}

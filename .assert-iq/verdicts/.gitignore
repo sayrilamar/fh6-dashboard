@@ -1,0 +1,4 @@
+# Verdicts archive — local only by default
+# (configured via config.yaml > verdicts.track_in_git for regulated clients)
+archive/
+*.tar.gz

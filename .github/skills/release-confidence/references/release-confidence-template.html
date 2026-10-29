@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  ============================================================================
+  ASSERT.IQ · RELEASE CONFIDENCE REPORT — CANONICAL HTML TEMPLATE
+  ============================================================================
+  This is the authoritative visual template for the `release-confidence`
+  skill. Whenever a Release Confidence Report is requested as HTML, reproduce
+  THIS layout and styling exactly, swapping only the content.
+
+  HOW TO USE
+  ----------
+  • Keep the <style> block verbatim — it is the approved look & feel.
+  • Replace every {{TOKEN}} with real values from the report (Step 6).
+  • The verdict pill color is driven by the .verdict background:
+      GO                → var(--go)    (green)   + remove "borderline" small tag
+      GO-WITH-MITIGATION→ var(--gomit) (orange)
+      HOLD              → var(--hold)  (red)
+    Set the layer bar widths/colors to match each layer's band:
+      High → ~85% var(--go) · Medium → ~55% var(--gomit) · Low → ~28% var(--hold)
+      Unable-to-assess → use the s-na pill + low bar.
+  • Repeat <tr> rows in the Work-Item Evidence Ledger, defects, and mitigations
+    tables as needed. All in-scope types (Epic, Feature, Story, Bug, Task, PR)
+    must have ≥1 row with counts or explicitly state "None in scope".
+  • Drop any section that does not apply (e.g. no HOLD blockers on a GO).
+  • Self-contained: no external assets. Print/PDF friendly (Cmd/Ctrl+P).
+  • WORK-ITEM LINKS: wrap every work-item ID in a clickable tracker link so
+    readers can open it directly. Build the href as {{ITEM_URL}} — the full
+    URL to that item in whatever tracker the team uses. Pick the form that
+    matches yours:
+      • Azure DevOps : https://<org>/<project>/_workitems/edit/<ID>
+      • Jira         : https://<base_url>/browse/<KEY>
+      • GitHub       : https://github.com/<owner>/<repo>/issues/<NUMBER>
+      • GitLab       : https://<base_url>/<group>/<project>/-/issues/<IID>
+      • other        : the tracker's canonical item/issue URL
+    Use class="wi" + target="_blank" rel="noopener" (see the defects row below).
+  • REDACTION: do not embed PII, customer/end-user data, payment values,
+    secrets, or employee IDs. Work-item IDs and feature names are fine for
+    internal audiences; for external sharing, generalize per request (and
+    drop the work-item links if the tracker is not reachable by the audience).
+  ============================================================================
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Release Confidence — {{RELEASE_ID}}</title>
+<style>
+  :root{
+    --go:#107C10; --gomit:#CA5010; --hold:#D13438; --info:#0078D4;
+    --ink:#1b1b1f; --muted:#5c5c66; --line:#e3e3ea; --bg:#f4f6fb;
+    --card:#ffffff; --p1:#D13438; --p2:#CA5010; --shadow:0 2px 10px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px;}
+  /* HERO */
+  .hero{background:linear-gradient(135deg,#2b2d42 0%,#1f2233 100%);color:#fff;border-radius:16px;padding:30px 34px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:240px;height:240px;background:radial-gradient(circle,rgba(202,80,16,.35),transparent 70%);}
+  .hero .eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.75;margin:0 0 6px;}
+  .hero h1{margin:0;font-size:34px;font-weight:700;}
+  .hero .sub{margin:6px 0 0;opacity:.85;font-size:15px;}
+  .verdict{display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--gomit);color:#fff;padding:11px 20px;border-radius:40px;font-weight:700;font-size:18px;box-shadow:0 4px 14px rgba(202,80,16,.45);}
+  .verdict .dot{width:12px;height:12px;border-radius:50%;background:#fff;animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .verdict small{font-weight:500;opacity:.9;font-size:13px;}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:18px;font-size:13px;opacity:.9;}
+  .meta b{opacity:.7;font-weight:600;}
+  /* SECTION */
+  h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:34px 0 14px;font-weight:700;}
+  .grid{display:grid;gap:16px;}
+  .cols-2{grid-template-columns:1fr 1fr;}
+  .cols-4{grid-template-columns:repeat(4,1fr);}
+  .card{background:var(--card);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);border:1px solid var(--line);}
+  /* HEADLINE CALLOUT */
+  .headline{border-left:6px solid var(--gomit);background:#fff8f1;}
+  .headline h3{margin:0 0 6px;color:var(--gomit);font-size:17px;}
+  .headline p{margin:0;font-size:14.5px;}
+  /* LAYER CARDS */
+  .layer{position:relative;}
+  .layer .name{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 8px;}
+  .layer .score{font-size:20px;font-weight:700;margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+  .layer .ev{font-size:12.5px;color:var(--muted);margin:0;}
+  .pill{font-size:11px;font-weight:700;padding:3px 10px;border-radius:30px;color:#fff;}
+  .s-high{background:var(--go)} .s-med{background:var(--gomit)} .s-low{background:var(--hold)} .s-na{background:#6b6b76}
+  .barwrap{height:6px;background:var(--line);border-radius:6px;margin:10px 0 0;overflow:hidden;}
+  .bar{height:100%;border-radius:6px;}
+  /* TABLE */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);}
+  thead th{background:#2b2d42;color:#fff;text-align:left;padding:11px 14px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:nth-child(even){background:#fafbfe;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:6px;color:#fff;white-space:nowrap;}
+  .t-p1{background:var(--p1)} .t-p2{background:var(--p2)} .t-p3{background:#6b6b76}
+  .t-new{background:#8a8a94} .t-unassigned{background:#b5320e}
+  code{background:#eef0f6;padding:1px 6px;border-radius:5px;font-size:12px;color:#3a3a44;font-family:'SF Mono',Consolas,monospace;}
+  a.wi{text-decoration:none;}
+  a.wi code{cursor:pointer;color:var(--info);border-bottom:1px dotted var(--info);transition:background .15s;}
+  a.wi:hover code{background:#dceaf8;}
+  /* FLAGS / MITIGATION */
+  ul.flags{list-style:none;padding:0;margin:0;}
+  ul.flags li{padding:9px 0 9px 28px;position:relative;border-bottom:1px dashed var(--line);font-size:13.5px;}
+  ul.flags li:last-child{border-bottom:none;}
+  ul.flags li::before{content:"⚑";position:absolute;left:0;top:8px;color:var(--hold);}
+  .mit::before{content:"✓"!important;color:var(--go)!important;font-weight:700;}
+  .good{border-left:6px solid var(--go);background:#f3faf3;}
+  .good h3{color:var(--go);margin:0 0 6px;font-size:16px;}
+  .good p{margin:0;font-size:13.5px;}
+  /* WOULD-CHANGE */
+  .wc{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .wc .up{border-left:6px solid var(--go);background:#f3faf3;border-radius:10px;padding:14px 16px;font-size:13px;}
+  .wc .down{border-left:6px solid var(--hold);background:#fdf3f3;border-radius:10px;padding:14px 16px;font-size:13px;}
+  .wc b{display:block;margin-bottom:4px;}
+  .foot{margin-top:38px;text-align:center;color:var(--muted);font-size:12px;}
+  .badge{display:inline-block;background:#eef0f6;color:var(--muted);font-size:11px;padding:4px 11px;border-radius:20px;margin:2px;}
+  @media (max-width:820px){.cols-2,.cols-4,.wc{grid-template-columns:1fr;} .hero h1{font-size:26px;}}
+  @media print{body{background:#fff;} .card,table,.hero{box-shadow:none;} .verdict .dot{animation:none;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <p class="eyebrow">{{EYEBROW — e.g. QI Release Confidence Report · Team / Product}}</p>
+    <h1>{{RELEASE_ID}} &nbsp;<span style="opacity:.55;font-weight:400;font-size:22px;">({{RELEASE_LINE}})</span></h1>
+    <p class="sub">{{HEADLINE_FEATURES — dot-separated}}</p>
+    <!-- Verdict: set background to var(--go|gomit|hold) on the .verdict element -->
+    <div class="verdict"><span class="dot"></span>{{VERDICT}} <small>· {{VERDICT_QUALIFIER}}</small></div>
+    <div class="meta">
+      <span><b>SCOPE</b> &nbsp;{{SCOPE}}</span>
+      <span><b>DATE</b> &nbsp;{{DATE}}</span>
+      <span><b>SOURCES</b> &nbsp;{{SIGNAL_SOURCES}}</span>
+    </div>
+  </div>
+
+  <!-- HEADLINE -->
+  <h2>The one thing to say in the room</h2>
+  <div class="card headline">
+    <h3>⚠ {{HEADLINE_RISK_SENTENCE}}</h3>
+    <p>{{HEADLINE_BODY — what it is, the gating conversation, the mitigating lever}}</p>
+  </div>
+
+  <!-- LAYER SCORES -->
+  <h2>Four-Layer Signal Model</h2>
+  <div class="grid cols-4">
+    <div class="card layer">
+      <p class="name">CHANGE RISK</p>
+      <p class="score">{{CHANGE_BAND}} <span class="pill s-med">{{CHANGE_PILL}}</span></p>
+      <p class="ev">{{CHANGE_EVIDENCE}}</p>
+      <div class="barwrap"><div class="bar" style="width:{{CHANGE_BAR_PCT}};background:var(--gomit)"></div></div>
+    </div>
+    <div class="card layer">
+      <p class="name">PROTECTION</p>
+      <p class="score">{{PROTECTION_BAND}} <span class="pill s-med">{{PROTECTION_PILL}}</span></p>
+      <p class="ev">{{PROTECTION_EVIDENCE}}</p>
+      <div class="barwrap"><div class="bar" style="width:{{PROTECTION_BAR_PCT}};background:var(--gomit)"></div></div>
+    </div>
+    <div class="card layer">
+      <p class="name">SIGNAL TRUST</p>
+      <p class="score">{{TRUST_BAND}} <span class="pill s-med">{{TRUST_PILL}}</span></p>
+      <p class="ev">{{TRUST_EVIDENCE}}</p>
+      <div class="barwrap"><div class="bar" style="width:{{TRUST_BAR_PCT}};background:var(--gomit)"></div></div>
+    </div>
+    <div class="card layer">
+      <p class="name">OUTCOME EVIDENCE</p>
+      <p class="score">{{OUTCOME_BAND}} <span class="pill s-na">{{OUTCOME_PILL}}</span></p>
+      <p class="ev">{{OUTCOME_EVIDENCE}}</p>
+      <div class="barwrap"><div class="bar" style="width:{{OUTCOME_BAR_PCT}};background:var(--hold)"></div></div>
+    </div>
+  </div>
+
+  <!-- WORK-ITEM EVIDENCE LEDGER -->
+  <h2 style="margin-top:24px;">Work-Item Evidence Ledger</h2>
+  <table>
+    <thead><tr style="background:var(--info);color:#fff;">
+      <th style="padding:6px 10px;text-align:left;">Type</th>
+      <th style="padding:6px 10px;text-align:right;">In Scope</th>
+      <th style="padding:6px 10px;text-align:right;">Assessed</th>
+      <th style="padding:6px 10px;text-align:right;">Unverified</th>
+      <th style="padding:6px 10px;text-align:left;">Evidence Links / Notes</th>
+    </tr></thead>
+    <tbody>
+      <!-- Repeat one <tr> per work-item type. Row background alternates: #ffffff / #f5f9fc.
+           Use {{ITEM_TYPE}}, {{IN_SCOPE}}, {{ASSESSED}}, {{UNVERIFIED}}, {{EVIDENCE_NOTES}}.
+           Link any work-item IDs: href = {{ITEM_URL}}
+      -->
+      <tr style="background:#ffffff;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">Epic</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{EPIC_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{EPIC_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{EPIC_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{EPIC_NOTES}}</td>
+      </tr>
+      <tr style="background:#f5f9fc;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">Feature</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{FEATURE_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{FEATURE_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{FEATURE_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{FEATURE_NOTES}}</td>
+      </tr>
+      <tr style="background:#ffffff;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">User Story</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{STORY_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{STORY_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{STORY_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{STORY_NOTES}}</td>
+      </tr>
+      <tr style="background:#f5f9fc;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">Bug</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{BUG_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{BUG_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{BUG_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{BUG_NOTES}}</td>
+      </tr>
+      <tr style="background:#ffffff;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">Task</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{TASK_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{TASK_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{TASK_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{TASK_NOTES}}</td>
+      </tr>
+      <tr style="background:#f5f9fc;">
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">PR</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{PR_IN_SCOPE}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{PR_ASSESSED}}</td>
+        <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #c7e0f4;">{{PR_UNVERIFIED}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #c7e0f4;">{{PR_NOTES}}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:11px;color:var(--muted);margin-top:8px;"><b>Completeness gate:</b> All in-scope types must have ≥1 row in "Assessed" or explicitly state "None in scope". Any "Unverified" count must have a dated mitigation owner.</p>
+
+  <!-- DEFECTS -->
+  <h2 style="margin-top:20px;">Feedback &amp; Bugs — release-relevant open defects</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Pri</th><th>State</th><th>Surface</th><th>Note</th></tr></thead>
+    <tbody>
+      <!-- Repeat one <tr> per defect. Tag classes: t-p1/t-p2/t-p3, t-new, t-unassigned.
+           Wrap the ID in a tracker link: href = {{ITEM_URL}} (full item URL — see header). -->
+      <tr><td><a class="wi" href="{{ITEM_URL}}" target="_blank" rel="noopener"><code>{{ID}}</code></a></td><td><span class="tag t-p2">{{PRI}}</span></td><td><span class="tag t-unassigned">{{STATE}}</span></td><td><b>{{SURFACE}}</b></td><td>{{NOTE}}</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12px;color:var(--muted);margin-top:8px;">{{DEFECTS_FOOTNOTE — scope of bugs reviewed}}</p>
+
+  <!-- FLAGS + MITIGATING -->
+  <div class="grid cols-2" style="margin-top:18px;">
+    <div>
+      <h2 style="margin-top:0;">Red Flags</h2>
+      <div class="card">
+        <ul class="flags">
+          <!-- Repeat one <li> per red flag. (or a single "None identified" li) -->
+          <li>{{RED_FLAG}}</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h2 style="margin-top:0;">Mitigating Factor</h2>
+      <div class="card good">
+        <h3>✓ {{MITIGATING_FACTOR_TITLE}}</h3>
+        <p>{{MITIGATING_FACTOR_BODY}}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MITIGATIONS (GO-WITH-MITIGATION) -->
+  <h2>Mitigations Required — to hold GO</h2>
+  <table>
+    <thead><tr><th>#</th><th>Mitigation</th><th>Owner</th><th>By When</th><th>Addresses</th></tr></thead>
+    <tbody>
+      <!-- Repeat one <tr> per mitigation. Link any work-item IDs: href = {{ITEM_URL}} -->
+      <tr><td>1</td><td>{{MITIGATION}}</td><td>{{OWNER}}</td><td>{{BY_WHEN}}</td><td>{{ADDRESSES}}</td></tr>
+    </tbody>
+  </table>
+
+  <!-- WHAT WOULD CHANGE -->
+  <h2>What Would Change the Verdict</h2>
+  <div class="wc">
+    <div class="up"><b>↑ Upgrades verdict</b>{{UPGRADE_CONDITION}}</div>
+    <div class="down"><b>↓ Drops to HOLD</b>{{DOWNGRADE_CONDITION}}</div>
+  </div>
+
+  <!-- RISK ACCEPTANCE -->
+  <h2>Explicit Risk Acceptance — capture named sign-off</h2>
+  <div class="card">
+    <!-- Repeat one <p> per accepted risk; leave blanks for sign-off -->
+    <p style="margin:0 0 10px;font-size:13.5px;">▢ &nbsp;{{RISK}} — accepted by <b>__________</b> — rationale: __________</p>
+  </div>
+
+  <div class="foot">
+    <div>
+      <span class="badge">Quality = Velocity × Customer Satisfaction × System Resilience</span>
+      <span class="badge">Maturity tier: {{MATURITY_TIER}}</span>
+      <span class="badge">{{SIGNAL_MODE_NOTE}}</span>
+    </div>
+    <p style="margin-top:10px;">Generated by Assert.IQ · Release Confidence · {{TRACKER_REF}} · AI-assisted draft — human review gate applies before any release decision.</p>
+  </div>
+
+</div>
+</body>
+</html>

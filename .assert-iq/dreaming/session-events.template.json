@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\"'",
+        "osx": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\"'",
+        "linux": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-gate.sh\"'",
+        "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path '__PACK_ROOT__\\.assert-iq\\dreaming\\scripts\\dream-gate.ps1') { & '__PACK_ROOT__\\.assert-iq\\dreaming\\scripts\\dream-gate.ps1' }\""
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\"'",
+        "osx": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\"'",
+        "linux": "bash --noprofile --norc -c '[ -f \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\" ] || exit 0; bash \"__PACK_ROOT__/.assert-iq/dreaming/scripts/dream-record-session.sh\"'",
+        "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path '__PACK_ROOT__\\.assert-iq\\dreaming\\scripts\\dream-record-session.ps1') { & '__PACK_ROOT__\\.assert-iq\\dreaming\\scripts\\dream-record-session.ps1' }\""
+      }
+    ]
+  }
+}

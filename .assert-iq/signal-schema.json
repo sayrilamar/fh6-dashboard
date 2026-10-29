@@ -1,0 +1,170 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QI Outcome Signal Payload",
+  "type": "object",
+  "required": ["run_id", "commit_sha", "maturity_tier"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "commit_sha": { "type": "string" },
+    "branch": { "type": "string" },
+    "pr_id": { "type": ["string", "null"] },
+    "maturity_tier": { "enum": ["early", "mid", "higher"] },
+    "verdict": {
+      "description": "(v1.7.0+) Optional verdict object for decision confidence calibration and reproducibility.",
+      "type": "object",
+      "properties": {
+        "verdict_id": { "type": "string", "description": "UUID; globally unique identifier for this decision" },
+        "verdict_type": { "enum": ["pr_risk_assessment", "release_confidence", "hotspot_map", "other"], "description": "Type of verdict issued" },
+        "verdict_band": { "enum": ["green", "amber", "red", "ungraded"], "description": "Color band of the verdict" },
+        "verdict_score": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Numeric confidence score (0.0-1.0)" },
+        "layer_scores": {
+          "type": "object",
+          "description": "Per-layer scores with state and numeric value",
+          "properties": {
+            "change": { "type": "object", "properties": { "state": { "enum": ["strong", "weak", "ungraded"] }, "score": { "type": ["number", "null"] } } },
+            "protection": { "type": "object", "properties": { "state": { "enum": ["strong", "weak", "ungraded"] }, "score": { "type": ["number", "null"] } } },
+            "trust": { "type": "object", "properties": { "state": { "enum": ["strong", "weak", "ungraded"] }, "score": { "type": ["number", "null"] } } },
+            "outcome": { "type": "object", "properties": { "state": { "enum": ["strong", "weak", "ungraded"] }, "score": { "type": ["number", "null"] } } }
+          }
+        },
+        "layer_weights": {
+          "type": "object",
+          "description": "Per-layer weights (must sum to ~1.0)",
+          "properties": {
+            "change": { "type": "number" },
+            "protection": { "type": "number" },
+            "trust": { "type": "number" },
+            "outcome": { "type": "number" }
+          }
+        },
+        "maturity_tier": { "enum": ["early", "mid", "higher"], "description": "Maturity tier at time of verdict" },
+        "memory_version": { "type": "string", "description": "Hash/timestamp of memory state used (for provenance)" },
+        "oracle_verdicts_considered": { "type": "array", "items": { "type": "string" }, "description": "Oracle verdict IDs that fed this decision" },
+        "issued_at": { "type": "string", "format": "date-time", "description": "ISO 8601 timestamp when verdict was issued" },
+        "issued_by": { "type": "string", "description": "Agent ID or user name that issued the verdict" },
+        "pr_id": { "type": ["string", "null"], "description": "PR identifier if verdict applies to a PR" },
+        "release_id": { "type": ["string", "null"], "description": "Release identifier if verdict applies to a release" },
+        "assumptions": { "type": "array", "items": { "type": "string" }, "description": "Assumptions baked into this verdict" },
+        "linked_escape": { "type": ["object", "null"], "description": "If escape discovered, link to defect record" }
+      }
+    },
+    "signal_type": {
+      "description": "Optional discriminator. When present and equal to 'hotspot.map_generated', the payload is a per-repo periodic registry signal and the 'hotspot' object is required instead of 'layers'.",
+      "enum": ["pr.risk_assessed", "coverage.analysis", "release.confidence", "hotspot.map_generated", "estimate.generated"]
+    },
+    "estimate": {
+      "description": "Story-sizing signal emitted by estimate-story. Carries no team-profile content and no person-level data.",
+      "type": "object",
+      "properties": {
+        "estimate_id": { "type": "string" },
+        "story_id": { "type": ["string", "null"] },
+        "scale": { "enum": ["fibonacci", "tshirt", "custom"] },
+        "verdict": { "enum": ["estimable", "refine_first", "split"] },
+        "range": {
+          "type": "object",
+          "properties": {
+            "low": { "type": ["string", "number", "null"] },
+            "high": { "type": ["string", "number", "null"] }
+          }
+        },
+        "confidence": { "enum": ["high", "medium", "low", null] },
+        "anchor_source": { "enum": ["history", "reference_story", "none"] },
+        "layer_states": {
+          "type": "object",
+          "properties": {
+            "change": { "enum": ["strong", "weak", "ungraded"] },
+            "protection": { "enum": ["strong", "weak", "ungraded"] },
+            "trust": { "enum": ["strong", "weak", "ungraded"] },
+            "outcome": { "enum": ["strong", "weak", "ungraded"] }
+          }
+        },
+        "ungraded_reasons": { "type": "array", "items": { "type": "string" } },
+        "team_fit_state": { "enum": ["graded", "ungraded"] },
+        "output_mode": { "enum": ["report", "comment", "field"] }
+      }
+    },
+    "hotspot": {
+      "description": "Per-repo Hotspot Risk Registry signal emitted by generate-hotspot-map.",
+      "type": "object",
+      "properties": {
+        "refresh_trigger": { "enum": ["sprint", "on_demand"] },
+        "module_count": { "type": "integer" },
+        "tier_counts": {
+          "type": "object",
+          "properties": {
+            "critical": { "type": "integer" },
+            "medium": { "type": "integer" },
+            "low": { "type": "integer" },
+            "watchlist": { "type": "integer" }
+          }
+        },
+        "hri_basis_distribution": {
+          "type": "object",
+          "description": "Count of rows by which signals were GRADED (e.g. V+C+D, V+C, V_only).",
+          "additionalProperties": { "type": "integer" }
+        },
+        "ungraded_signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["signal", "reason"],
+            "properties": {
+              "signal": { "enum": ["volatility", "complexity", "defect_density"] },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "registry_path": { "type": "string" },
+        "registry_json_path": { "type": "string" },
+        "volatility_lookback_days": { "type": "integer" },
+        "defect_density_lookback_days": { "type": "integer" }
+      }
+    },
+    "layers": {
+      "type": "object",
+      "required": ["change", "protection", "trust", "outcome", "decision"],
+      "properties": {
+        "change": {
+          "type": "object",
+          "properties": {
+            "files_changed": { "type": "integer" },
+            "services_touched": { "type": "array", "items": { "type": "string" } },
+            "churn_lines": { "type": "integer" },
+            "late_changes": { "type": "integer" }
+          }
+        },
+        "protection": {
+          "type": "object",
+          "properties": {
+            "tests_executed": { "type": "integer" },
+            "coverage_pct": { "type": "number" },
+            "traceability_pct": { "type": "number" }
+          }
+        },
+        "trust": {
+          "type": "object",
+          "properties": {
+            "flaky_count": { "type": "integer" },
+            "blocked_count": { "type": "integer" },
+            "env_uptime_pct": { "type": "number" }
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "properties": {
+            "defects_open": { "type": "integer" },
+            "escapes_30d": { "type": "integer" },
+            "telemetry_alerts": { "type": "integer" }
+          }
+        },
+        "decision": {
+          "type": "object",
+          "properties": {
+            "release_confidence": { "enum": ["green", "amber", "red"] },
+            "mitigation_required": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

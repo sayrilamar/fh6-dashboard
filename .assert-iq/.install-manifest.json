@@ -1,0 +1,709 @@
+{
+  "version": "2.2.0",
+  "installed_at": "2026-10-29T14:45:57Z",
+  "mode": "committed",
+  "paths": [
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/agent-runs/.gitignore",
+      "scope": "workspace",
+      "sha": "a87cc6527873db427a9516368f085d65efd3e2ced2d35d8d946872f0a9051b7c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/agent-runs/index.json",
+      "scope": "workspace",
+      "sha": "822d084f4cce0db5d06097c284987f13d4ded692cbc35fae91c5e24d675449eb"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/VERDICT_INTEGRATION_GUIDE.md",
+      "scope": "workspace",
+      "sha": "77386ea47860aa60ef8a2755ab7a84e199815a61c7fb7a7d8f76853a3006a00a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/verdicts/VERDICTS.md",
+      "scope": "workspace",
+      "sha": "102966d083fa7d51cd66068030bd7ee423c4fdafa4b56291a8d49d706f39267b"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/verdicts/.gitignore",
+      "scope": "workspace",
+      "sha": "19b9e5a36f5ba738f2fb1708271e044a07c440dfe37d934e4b0df54275b43eb8"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/verdicts/index.json",
+      "scope": "workspace",
+      "sha": "6aa27a59b13be55b5208bfc715005c0dd5ddebfe845cb52ab3065150cb8f7f3b"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/memory-sanity.py",
+      "scope": "workspace",
+      "sha": "62788e90b25f8a21c86411fccfd619140653f0a1ef71f333a39e8d9c7ce1eb3f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/dream-safety.py",
+      "scope": "workspace",
+      "sha": "f771a6cdae145d2a8bc633f58fbb34941e0c43a7f41edf2690841ba11ae5e202"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/__init__.py",
+      "scope": "workspace",
+      "sha": "3369a04d7d03910b3cd7a02d06205009eb11ab375ec7319e1753b3534f4fce9a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/verdict-recorder.py",
+      "scope": "workspace",
+      "sha": "69cc9afff301ffcdae1910734314ab4c33a4fea4b96a470b53e4106dc5abbeb8"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/audit-verdict.sh",
+      "scope": "workspace",
+      "sha": "9793fd85ad22e261a1aaf901047f9becc73e748bbacbe3009d9ae31a856be7c3"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/analysis/calibration.py",
+      "scope": "workspace",
+      "sha": "b7968117c5a59dc356ae82314dc945e512290a15f77fa12ac445184d56822a1e"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/schemas/.gitkeep",
+      "scope": "workspace",
+      "sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/schemas/rubric-v1.0.json",
+      "scope": "workspace",
+      "sha": "cd237feaaf4efc9046f3386adfb8e5a3e417d1fe5c2b8a3dfb619afe0fb0cb15"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/README.md",
+      "scope": "workspace",
+      "sha": "9a1308f610321b1abc4b25398c9c8e9ddff945af42203743d88de117fd0e114d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/rubrics/test-unit-v1.0.json",
+      "scope": "workspace",
+      "sha": "55601adb64c7ecff3b04d69f128aaab2160a7ca1b4766ad441d7b5086d12ac27"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/rubrics/plan-v1.0.json",
+      "scope": "workspace",
+      "sha": "9bfa12a915aa2a9e2676f4a9974ab29fb70949643114aedb7bd2d4bc54328406"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/rubrics/.gitkeep",
+      "scope": "workspace",
+      "sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/rubrics/test-integration-v1.0.json",
+      "scope": "workspace",
+      "sha": "211c98662786fb1a6ae3ac3186227d0efd12f883c19724f82ed8118733bda18c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/oracles/rubrics/bug-report-v1.0.json",
+      "scope": "workspace",
+      "sha": "5f0f47bc5c8b0806d0ea825dea68c97322407dfe3cd59175da79f848647c43c0"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/SKILL_VERDICT_QUICKSTART.md",
+      "scope": "workspace",
+      "sha": "efca26cb503065b95b95ea7c9fe35c1bf2c2f9b52a7255c01b3e6396dfdcc335"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/estimates/.gitignore",
+      "scope": "workspace",
+      "sha": "5f802535ac7948a4655788cb85f2097c26e120d60d56cfb48b617a30ef3fa9c5"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/governance.md",
+      "scope": "workspace",
+      "sha": "bd985169932fb3f6b6e95444a0aa3d8ac28175a65e1967297bcf9f3826bac997"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/tests/_qi/regression/golden-corpus.jsonl",
+      "scope": "workspace",
+      "sha": "140e8f229db2a8122587fcf3795ad6552d3659e9868f454260001fd3bbfd5a0d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/config.yaml",
+      "scope": "workspace",
+      "sha": "ea4d458691bff6e19829685d32bbd7eec9276571e2241adb14733f1589dcd9d4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/maturity-profile.md",
+      "scope": "workspace",
+      "sha": "5d17949d9c4cec7d521fb958d90d37392699462f816d0218c41502e25a2c95ff"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/business-metrics/baseline.json",
+      "scope": "workspace",
+      "sha": "cb54c81bf0db560a3f69529b2978b34ed0e6ac6ee768272727ae97292593cdac"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/business-metrics/.gitignore",
+      "scope": "workspace",
+      "sha": "2b17a041e9f422013e00aff2ea9a462b49e0adbcda6e4d15ffacb41ee524d926"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/team-profile.template.yaml",
+      "scope": "workspace",
+      "sha": "cc876c2994622c9c68add7097750d55e950be6c34154980bae497ed6dae89cbb"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/examples/skill-verdict-example.py",
+      "scope": "workspace",
+      "sha": "bb5a802037619f53f91e5cbff9849d7412136034156f29356d4195dd3eb8aeb0"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/signal-schema.json",
+      "scope": "workspace",
+      "sha": "9868df2d0469392c675ff9db542f1c2bfaf774d9d6cdcee0619e0b7fd75b6524"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/workspace-topology.md",
+      "scope": "workspace",
+      "sha": "0a6eea5b9f1f8b7aed2be1c1d1b35d8810ec83c3fea42ae21a3bea3db747c53c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-foundation.instructions.md",
+      "scope": "workspace",
+      "sha": "c73a925e1b92f26ad3c9a4c03f9341690f00809080034ec5a6173a9562886a23"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-manual-test-design.instructions.md",
+      "scope": "workspace",
+      "sha": "850f36a0ab7b045c94e275185e0c13f2b0c66cd1660affab2d5dda92d9330bdf"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-oracle.instructions.md",
+      "scope": "workspace",
+      "sha": "dbe098a57f3ffba8eb2f75b20849a6a656805cd82383c772162386f1c0d5bdf4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-signal-emission.instructions.md",
+      "scope": "workspace",
+      "sha": "b71f90f9174dd0d18b05d7c9d0a80b1c49533314c2ead1fcdd6999dac124ba46"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-test-design.instructions.md",
+      "scope": "workspace",
+      "sha": "5584d29842b397534a5840aa7a6787f06198982736e5d98407171c6804b34e34"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/instructions/qi-traceability.instructions.md",
+      "scope": "workspace",
+      "sha": "24fd54bfa07516ebd27afcb265a97be8f6349697ac5c73210af8877b95b1b0a0"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/CLAUDE.md",
+      "scope": "workspace",
+      "sha": "ad6f3ba7f4c11693427abc24355e6d94a8c543fe6aff669af373e2409ec8cd81"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/copilot-instructions.md",
+      "scope": "workspace",
+      "sha": "777e4393d41065dabee10e3310f7f92a1f82b8431e825391b29c17ac294893cd"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/AGENTS.md",
+      "scope": "workspace",
+      "sha": "1400366356f25b86a5ee2dcffb1b1ca42814f85452e893fa598a758bed2b0c4c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.vscode/settings.json",
+      "scope": "workspace",
+      "sha": "aaa0a946e21779dbbfa8983149b02af196f718cac96a364ff510f2a271c79c59"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.vscode/mcp.json",
+      "scope": "workspace",
+      "sha": "eca99d2acb0b6687fb69f341adf43c66437c47407035aa2c44fe899e281029d5"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/provenance.json",
+      "scope": "workspace",
+      "sha": "2ad50251cf03ef3436ac782d7f4ba56c9556062e3c0046e1dfb494cbe6704bf4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/claude-hooks.windows.template.json",
+      "scope": "workspace",
+      "sha": "26f9905db0c5533d507002f0c4f0f1cfa6796c6170e0cdb7868df1da93a8054f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/claude-hooks.posix.template.json",
+      "scope": "workspace",
+      "sha": "c1f44a6556a7415f45b70a1151115dada92972820f10141c1f8cd0ab97be7652"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/README.md",
+      "scope": "workspace",
+      "sha": "6dc36cc9b43ba5cfedb1a4b0bea615a19202df9620c25efd5fc2ec4b6554167a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/dream-record-session.ps1",
+      "scope": "workspace",
+      "sha": "7b0c812d1e837f1fd231a4bb4113731d148f88670a1678eac122e9cf63c74d48"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/dream-gate.sh",
+      "scope": "workspace",
+      "sha": "34c44f6af772004aa45f62fe3648c3329661736da96e4f2509eb3fb3f9b56ecd"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/dream-record-session.sh",
+      "scope": "workspace",
+      "sha": "8fb4ccc7f4388b2976661d4acec2bc4ae6e3621d8d08adf93cfae3c29f49829c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/lib/dream-utils.sh",
+      "scope": "workspace",
+      "sha": "933de8fc9a27878eb8861b0363339875fd50ce91d8b093e7cfd7ad26ba9ecf8c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/lib/dream-utils.ps1",
+      "scope": "workspace",
+      "sha": "94d66d780fed59b3dfa5961ffcec3a0ff9dd68d78b172a307689b1bd117d78df"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/lib/render-events.sh",
+      "scope": "workspace",
+      "sha": "e261545a66f6923bd5471f301d2925bc35d27dd6e020b0ae296527fc6c9bbc73"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/lib/render-events.ps1",
+      "scope": "workspace",
+      "sha": "7ce89a99ed3963dee1551a9cfc06e1734e3be7befed156c59f80165c4fdc0d3d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/scripts/dream-gate.ps1",
+      "scope": "workspace",
+      "sha": "16bcee0ea89ede2588bd84402db0a9e95f276d3878d5a1b88f03d7b0998c6ae7"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/service/dreaming_service.py",
+      "scope": "workspace",
+      "sha": "52b71435e5c78a49be8e0cbc973e0081e7f13f1498f59334557759b64b44e8ac"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/session-events.template.json",
+      "scope": "workspace",
+      "sha": "471e3c4bc89fc82453f1b48a7cb259659ed9910366daa5136037c5dfcabd7714"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.assert-iq/dreaming/session-events.json",
+      "scope": "workspace",
+      "sha": "f6dd7a5c3394bba4e73c0da92e1b18aa8f97f8af3bc3455693f8c157e4695279"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/settings.json",
+      "scope": "workspace",
+      "sha": "e899c98ba326ade2b5c055ce78152be69ed1a5825d7993f4b65d3d23d5e9e8f8"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-manual-test-case/SKILL.md",
+      "scope": "workspace",
+      "sha": "c199f9e2fcb2c68b158731cf4eb41150f6a1c763423e5e6a531691fc72e3931f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-traceability-matrix/SKILL.md",
+      "scope": "workspace",
+      "sha": "ac74f7b167e226dc31920a4163e6dcccffe79f3d3d3b9a201c7146ee93cff352"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-tests-from-ac/SKILL.md",
+      "scope": "workspace",
+      "sha": "c2f2e95a06e67882575348b41dd946cd4a214bf4faa986375cd831374d686aa7"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/analyze-escaped-defect/SKILL.md",
+      "scope": "workspace",
+      "sha": "f70023597bdc3c80b18aaede6eb3c2d29b48fb57ea3cc3ed8c8d28126b0a9e83"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-automated-api-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "0f901d7ddd6b7da59dbeea9a1aa9c457758a88f6e9f38a2841334ba7d63c76aa"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/debug-ui-tests/SKILL.md",
+      "scope": "workspace",
+      "sha": "941e23e67fb74bd3057838c10d116a16b0c8084a69bf07578c9d3b4b5e60755f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/measure-qi-impact/SKILL.md",
+      "scope": "workspace",
+      "sha": "f054f98cf64aa9c5a736ecad11d627c253f84c8106d05e5e11cf90675bcdc291"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/release-confidence/references/release-confidence-template.html",
+      "scope": "workspace",
+      "sha": "02f623d68ea098e344e62fe876cc31a225f0a4ba765fa89ad6f27cc3b24853d2"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/release-confidence/SKILL.md",
+      "scope": "workspace",
+      "sha": "5278c7abc73923067d487c1b2cfc95ded4d43995b52f105849734ea4d7c8ec0a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-hotspot-map/SKILL.md",
+      "scope": "workspace",
+      "sha": "dfe038f8df8762ece791149c06fa1786c74698791ab97b0615b4b0283f7dc296"
+    },
+    {
+      "action": "created",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/estimate-story/references/estimate-report-template.md",
+      "scope": "workspace",
+      "sha": "a35c5f2466981296e6e9cba7b44416481fd447fe8cabef37063a588aa561a268"
+    },
+    {
+      "action": "created",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/estimate-story/SKILL.md",
+      "scope": "workspace",
+      "sha": "0f1137f04b044bcc3565957c5dede86c307342324c11f23d26175db51110426b"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/assert-iq-tailor/SKILL.md",
+      "scope": "workspace",
+      "sha": "286f8e3cc04f42caf7b66a0cc0089ecc7927abda706d2fc774842d12f7998514"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/agentic-heal/SKILL.md",
+      "scope": "workspace",
+      "sha": "5d3333eea5b15e05f51a29830dfa70663b7ba315ad0be2499d0e1d03a3c4c113"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/code-review/SKILL.md",
+      "scope": "workspace",
+      "sha": "612c69ba726fe032843b1c6bf4f473ab31e95e1e90db4c13763892fe81861110"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-test-data/SKILL.md",
+      "scope": "workspace",
+      "sha": "c67b60d0f36f1a97c41225b4d836d038f05963f4f941ae418fd0e329f23556db"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-automated-ui-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "a4080d6313ce08d1721023bd9b2b70e7e11e4fd92896c2def06f4e6e54b8adb9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/review-acceptance-criteria/SKILL.md",
+      "scope": "workspace",
+      "sha": "3898640591ad277f48946e09fec8ead21ddc1391192beca92f876f05e9fb0813"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-bug-report/SKILL.md",
+      "scope": "workspace",
+      "sha": "6595c18567a41372e04a8637d56f7ba4a6d81b15fce4f0cb2d224d93ce97703b"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-exploratory-charter/SKILL.md",
+      "scope": "workspace",
+      "sha": "9cfb0a45c11e9270a32a00a65663d2302682aba2d602c329c4769c516db8ecef"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/risk-assess-pr/SKILL.md",
+      "scope": "workspace",
+      "sha": "b4ac5be0417f836a4b81573b7abe2492ff1481feae4891bace8bf4f5b991edff"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/define-quality-rubric/SKILL.md",
+      "scope": "workspace",
+      "sha": "f6fa721fe12b5cff3f014a1e93f97d599bb7654063b3aa370bbf5ba2750b8af9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/calibration-report/SKILL.md",
+      "scope": "workspace",
+      "sha": "a0c6033bfabe4dfba6642b445a998d5da909fe2307534d12ab639fed7ea1e7d0"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/new-pull-request/SKILL.md",
+      "scope": "workspace",
+      "sha": "c94683da8f88e67899e5c04ac1c9e018278ae120e59b08fec38e9835a1bf160e"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/check-test-coverage/SKILL.md",
+      "scope": "workspace",
+      "sha": "8e94ea084318269b199d5333cd9625d6783fc7c1c512c46af47a282a511e588a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/eval-optimizer/references/grading-rubric.md",
+      "scope": "workspace",
+      "sha": "d19056b75ab1a557582c1b841b4df99821c59afdb4619b5bd91427b7c9eac258"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/eval-optimizer/references/optimization-principles.md",
+      "scope": "workspace",
+      "sha": "20f58a986892a3b7a9b41800f4da80ed356cf444a1973789bf4f243066a0e45d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/eval-optimizer/SKILL.md",
+      "scope": "workspace",
+      "sha": "6dd380efa8e2a0b8832580e7afa98d0786711f16b5f10f193f6d4afd7f665dda"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-automated-unit-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "b8696583c824db1358a6a7880f3492bd1acbb374f8643f7869371dc951e1e1f6"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/analyze-flaky-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "e40d2df013dbee906f0d997a9aedb65ef5e3da64c840fc53da26ed46b7efd3c4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/review-test-quality/SKILL.md",
+      "scope": "workspace",
+      "sha": "ff39ecd075f27be5ccf6679a7d20adc325794ab067d1e447c97ce497872625ed"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/assert-iq-bootstrap/SKILL.md",
+      "scope": "workspace",
+      "sha": "48681df26f5042a920d3ea51c4c0891e06006e3d792ac31c3d4d65c2fb20c7ec"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/dream/SKILL.md",
+      "scope": "workspace",
+      "sha": "decc7a35e7d20f48883b985a89414384c776c828a869bbf56d24bacbc83fca5c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/grade-with-rubric/SKILL.md",
+      "scope": "workspace",
+      "sha": "4b89614d4c3848d6a3d7ef8081672a78a2aefb449e4a3662d7a9ed5b0ff93a79"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/check-merge/SKILL.md",
+      "scope": "workspace",
+      "sha": "21696085ef8216449df74a9c7cd344d6243303bf91570fa8cb1094f21b44901d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/skills/generate-test-plan/SKILL.md",
+      "scope": "workspace",
+      "sha": "eacf9410bf27fa960899ff553cdbc3c580ec22d14a938bc21c3d220b597f7677"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/Assert-IQ-PLAN.agent.md",
+      "scope": "workspace",
+      "sha": "fc065e62a31cd26583025d4b50be3d0bc95fd89ade2a49a968c9842fd87e7e2c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/coverage-analyst.agent.md",
+      "scope": "workspace",
+      "sha": "d8256b6aaedc82828f960f07a4913ea832a17fd7aad2427ffa73efa05cd0c5a4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/hotspot-analyzer.agent.md",
+      "scope": "workspace",
+      "sha": "799f151136973618fcfb5ed33c0db846eea9611b15f3507608c9f1fee497563f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/memory-curator.agent.md",
+      "scope": "workspace",
+      "sha": "fc565ab3beaa71808691b1ac6533f3e6a97895a2d87f101926dca9af4f681182"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/flake-adjudicator.agent.md",
+      "scope": "workspace",
+      "sha": "d8b3b42b15364d2ab272c5adbe49ae6838fbf044962f510e377f4447d13da240"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/risk-scorer.agent.md",
+      "scope": "workspace",
+      "sha": "e1f0866579c62fb629459b314376c461b33519570d07824c2221f38c312c119a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/traceability-auditor.agent.md",
+      "scope": "workspace",
+      "sha": "ab612e2144a08adc8d86495f1a1a717c23df1e41574208b03f26be4407770c3e"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/oracle-grader.agent.md",
+      "scope": "workspace",
+      "sha": "0c3d398d40918c3e9a1bde39e91bb312fe43d6a46678d907cddbc01796b5cdd3"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/specialists/calibration-specialist.agent.md",
+      "scope": "workspace",
+      "sha": "62b98ae28224cb2ba0d5538f2e44b59a81d80ccfa1363a3352dd0c4d5cc30f98"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.github/agents/Assert-IQ.agent.md",
+      "scope": "workspace",
+      "sha": "21e636a69030abc752a3deb2f167bce75a128da84e55f68bd8840caa62a192e1"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/assert-iq-plan.md",
+      "scope": "workspace",
+      "sha": "dd4260bee8875ac4002763294e7cb4b40f84664b12241a04d49560970a78c735"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/assert-iq.md",
+      "scope": "workspace",
+      "sha": "ddc6eee610b9163160ad00e1f85b620b851fee4409fca57c92c02dcaf67c01b6"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/traceability-auditor.md",
+      "scope": "workspace",
+      "sha": "2840f609bdfed14a961202c5f0685b78f160a5c0bc344857f39f4c412b7226bf"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/coverage-analyst.md",
+      "scope": "workspace",
+      "sha": "35f3d9960f08dbc9d07e97bf3e531be6c2159748bf551bc34ad52400168328a7"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/calibration-specialist.md",
+      "scope": "workspace",
+      "sha": "bccf919f5c0d44ffaa8f839a32be6038304c2733b631c823d56ca12878296038"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/hotspot-analyzer.md",
+      "scope": "workspace",
+      "sha": "829ba92ae37142fc5e496d7cf3d54081b80e85b594e7fa34d73c09b92271bafa"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/flake-adjudicator.md",
+      "scope": "workspace",
+      "sha": "70f20369ab459bd71450e9e331c076692565ac403cd40b3cfb91a000b18cc01f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/risk-scorer.md",
+      "scope": "workspace",
+      "sha": "b168b98090041f03d74e3f00787e3e12512f6bb502d484f58abafb2ce6be1ad4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/memory-curator.md",
+      "scope": "workspace",
+      "sha": "5ebd1819bd1d1efe485c8c4d1541ce6a8f6e141956837a24bff4d7fd288cfd23"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/specialists/oracle-grader.md",
+      "scope": "workspace",
+      "sha": "19d938408cc8110716e9796fcbcfb971079330bad7d14eedf5f773e11798cb2f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/agents/grader.md",
+      "scope": "workspace",
+      "sha": "e2c39e0afb6e4f3318ccafff953c77f7e01906482e46f1ee16ffa50c38edb0c9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/skills",
+      "scope": "workspace",
+      "sha": ""
+    }
+  ]
+}

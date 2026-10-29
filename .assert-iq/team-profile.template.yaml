@@ -1,0 +1,83 @@
+# =============================================================================
+# Assert.IQ — Team profile (template)
+# =============================================================================
+# Read by /estimate-story for Output B (team fit) only. It never changes the
+# point range (Output A) — points stay a team-relative size.
+#
+# Copy to .assert-iq/team-profile.yaml (or let /estimate-story scaffold it
+# with you) and fill it in during refinement or a retro.
+#
+# ROLE SLOTS ONLY — NO NAMES. A slot describes a seat on the team, not a
+# person. Do not add names, emails, user IDs, or a name-to-slot mapping to
+# this file. This keeps the profile free of personal data and makes it
+# unusable for evaluating individuals. See .assert-iq/governance.md
+# § 5 (Team profile).
+#
+# Review it when the team changes. maturity-profile.md treats a team
+# composition change of more than 30% as a trigger to re-evaluate the tier.
+# =============================================================================
+
+schema_version: "1.0"
+
+purpose_notice: >-
+  Planning aid for refinement. Not for evaluating, ranking, or comparing
+  individuals.
+
+team:
+  name: "<team or pod name>"          # mirrors client.embedded_team
+  cadence_days: 14                    # sprint length
+  last_reviewed: "<YYYY-MM-DD>"       # /estimate-story warns when stale
+
+# Level vocabulary. Keep it to the levels your team actually uses.
+level_scale: [junior, mid, senior]
+
+# Elapsed-time ratio per level, relative to the team's historical cycle time
+# (1.0 = team median). Team-declared, not inferred. Ignored at Early tier.
+# At Higher tier /estimate-story shows observed ratios next to these once
+# enough closed estimates exist — it never overwrites them.
+level_time_ratios:
+  junior: 1.5
+  mid: 1.0
+  senior: 0.8
+
+# One entry per seat. role: dev | qa | ba | pm | design | sre | data | other
+# familiarity: module path or area → none | some | deep
+roles:
+  - slot: DEV_SENIOR_1
+    role: dev
+    level: senior
+    capacity_pct: 80                  # share of a sprint available for story work
+    can_review: true
+    familiarity:
+      "<src/module-a>": deep
+      "<src/module-b>": some
+  - slot: DEV_JUNIOR_1
+    role: dev
+    level: junior
+    capacity_pct: 100
+    can_review: false
+    familiarity:
+      "<src/module-a>": some
+  - slot: QA_MID_1
+    role: qa
+    level: mid
+    capacity_pct: 90
+    can_review: true
+    familiarity:
+      "<src/module-a>": deep
+
+# When to recommend pairing. Hotspot tiers come from /generate-hotspot-map.
+pairing_rules:
+  junior_pairs_on_hotspot_tiers: [CRITICAL]
+  pair_when_no_deep_familiarity: true
+
+# Teams this one routinely waits on.
+external_dependencies:
+  - team: "<platform team>"
+    typical_wait_days: 3
+
+# Shared environments that queue work.
+environments:
+  - name: "staging"
+    shared: true
+    wait_days: 1

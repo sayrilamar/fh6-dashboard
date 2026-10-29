@@ -16,3 +16,6 @@ sessions/
 
 # macOS
 .DS_Store
+
+# Claude Code personal settings (machine-local)
+.claude/settings.local.json

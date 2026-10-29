@@ -1,0 +1,69 @@
+{
+  "$schema": "https://assert-iq.io/schemas/rubric-v1.0.json",
+  "rubric_id": "plan-v1.0",
+  "artifact_type": "test-plan",
+  "title": "Test Plan Acceptance Contract",
+  "description": "Criteria for operating test plans that guide delivery teams",
+  "maturity_tiers": ["mid", "higher"],
+  "dimensions": [
+    {
+      "id": "scope_clarity",
+      "name": "Scope clarity",
+      "weight": 1.0,
+      "criterion": "Plan explains what is in scope, out of scope, and why",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Scope section explicitly lists covered features and excluded areas with rationale"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Scope is implicit or vague; unclear what will/won't be tested"
+        }
+      ]
+    },
+    {
+      "id": "signal_oriented",
+      "name": "Signal-oriented exit criteria",
+      "weight": 0.9,
+      "criterion": "Exit criteria are defined by signal quality, not arbitrary dates",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Plan defines signal thresholds (coverage %, pass rates, flake tolerance) for go/no-go"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Exit criteria undefined or based only on calendar date"
+        }
+      ]
+    },
+    {
+      "id": "risk_acknowledgment",
+      "name": "Risk acknowledgment",
+      "weight": 0.8,
+      "criterion": "Plan acknowledges known risks and mitigation strategies",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Identifies high-risk areas (hotspots, new code) and how they're tested"
+        },
+        {
+          "level": "CONDITIONAL",
+          "definition": "Some risks mentioned but mitigation unclear"
+        },
+        {
+          "level": "FAIL",
+          "definition": "No risk acknowledgment; plan treats all areas as equal priority"
+        }
+      ]
+    }
+  ],
+  "passing_criteria": "scope_clarity=PASS AND signal_oriented=PASS AND weighted avg >= 0.85",
+  "metadata": {
+    "author": "assert-iq-pack",
+    "created_at": "2026-08-11T00:00:00Z",
+    "version": "1.0",
+    "tags": ["test-plan", "acceptance-contract"]
+  }
+}

@@ -1,0 +1,11 @@
+# Orchestration artifacts (one file per lead-agent run) are local-only by
+# default. They contain context-specific specialist outputs and intermediate
+# data. Track them if your team requires the audit trail in version control.
+#
+# IMPORTANT — additive patterns only, never negations (`!pattern`).
+# A .gitignore deeper in the tree outranks .git/info/exclude, so a negation
+# here silently RE-INCLUDES the file and defeats a trial-mode install. This
+# file previously used `*` plus `!.gitignore` / `!index.json`, which is exactly
+# why those two showed up in `git status` after `--mode=trial`.
+# Enforced by unit-gitignore-hygiene.sh.
+*.specialist-outputs.json

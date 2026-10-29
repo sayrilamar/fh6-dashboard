@@ -1,0 +1,65 @@
+{
+  "$schema": "https://assert-iq.io/schemas/rubric-v1.0.json",
+  "rubric_id": "test-integration-v1.0",
+  "artifact_type": "automated-integration-test",
+  "title": "Integration Test Acceptance Contract",
+  "description": "Criteria for multi-component integration tests that verify system-level behavior",
+  "maturity_tiers": ["mid", "higher"],
+  "dimensions": [
+    {
+      "id": "scenario_clarity",
+      "name": "Scenario clarity",
+      "weight": 1.0,
+      "criterion": "Test name and comments explain the end-to-end workflow being verified",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Test name describes the workflow; setup comments explain component interactions"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Test name is generic; no clear explanation of what scenario is being tested"
+        }
+      ]
+    },
+    {
+      "id": "dependency_clarity",
+      "name": "Dependency clarity",
+      "weight": 0.9,
+      "criterion": "External dependencies are explicit (DB, cache, API mocks, etc.)",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "All external dependencies documented in setup; mocks/fixtures clearly labeled"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Unclear which dependencies are mocked vs. real; potential for environment-dependent failures"
+        }
+      ]
+    },
+    {
+      "id": "failure_messages",
+      "name": "Failure messages",
+      "weight": 0.7,
+      "criterion": "When assertions fail, the error message explains what went wrong",
+      "levels": [
+        {
+          "level": "PASS",
+          "definition": "Descriptive assertion messages; logs or traces show component interaction"
+        },
+        {
+          "level": "FAIL",
+          "definition": "Generic assertion error; hard to diagnose component failure"
+        }
+      ]
+    }
+  ],
+  "passing_criteria": "All dimensions at PASS level",
+  "metadata": {
+    "author": "assert-iq-pack",
+    "created_at": "2026-08-11T00:00:00Z",
+    "version": "1.0",
+    "tags": ["integration-test", "automated", "acceptance-contract"]
+  }
+}

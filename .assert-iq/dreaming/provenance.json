@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0",
+  "description": "Append-only log of dream cycles with memory versioning for reproducibility",
+  "dream_cycles": [
+  ]
+}
