@@ -12,7 +12,7 @@ import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange } from '../pl
 import { usePerRun } from '../perRun';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
-import { brakeMove, diffMove } from '../rows';
+import { brakeDiagnosis, brakeMove, diffMove } from '../rows';
 import { damperMove } from '../damping';
 import { clampToLimit, markedLimit } from '../limits';
 import { EVENT_TYPES, eventLabel, sameEventType } from '../events';
@@ -623,12 +623,7 @@ function brakeAdvice(a: SessionAnalytics) {
     press = { d: -R(cl((maxSlip - 80) / 3, 2, 8)), why: `rear goes away under braking with an axle at the limit (${f}% / ${r}%) — LOWER pressure so trail-braking doesn't tip the rear over the limit` };
   }
 
-  let diagnosis: string, level: 'info' | 'warn' | 'crit';
-  if (maxSlip < 70) { diagnosis = `Under-braking — you can brake harder (peak axle slip ${maxSlip}%)`; level = 'info'; }
-  else if (gap < -15 && r >= 95) { diagnosis = `Rears locking first — unstable (rear ${r}% / front ${f}%)`; level = 'crit'; }
-  else if (f >= 95 && r >= 95) { diagnosis = `Both axles past lockup (front ${f}% / rear ${r}%)`; level = 'warn'; }
-  else if (gap > 15 && f >= 95) { diagnosis = `Fronts locking first (front ${f}% / rear ${r}%)`; level = 'warn'; }
-  else { diagnosis = `Threshold braking (front ${f}% / rear ${r}%) — near the limit, balanced`; level = 'info'; }
+  const { diagnosis, level } = brakeDiagnosis(f, r);
 
   return { f, r, diagnosis, level, bal, press };
 }
@@ -2342,7 +2337,9 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
               ? <><b>Do both: put the failed setting{backfired.length === 1 ? '' : 's'} back, then make {grouped ? 'these changes' : 'this one change'}.</b> That keeps every change attributable, so the next run is still measurable.</>
               : grouped
                 ? <><b>Make these {n} changes together — one per lever group.</b> Each is read from its own part of the lap, no two aim at the same symptom, and chassis changes still go one per run, so every result stays attributable. Prefer one at a time? Switch to one change per run on the pre-run card.</>
-                : <><b>Change only this one thing.</b> Moving several knobs in one run makes the result impossible to attribute — and it's what drove the previous runs to their limits without the car improving.</>}
+                : plan.perRun === 'group'
+                  ? <><b>This is the only change worth making this run</b> — no other lever group has one.</>
+                  : <><b>Change only this one thing.</b> Moving several knobs in one run makes the result impossible to attribute — and it's what drove the previous runs to their limits without the car improving.</>}
           </div>
         </>
       )}

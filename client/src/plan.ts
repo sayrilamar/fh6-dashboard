@@ -545,7 +545,15 @@ export function buildPlan(
       // throw away a good setting.
       // Only a measured SYMPTOM regression disqualifies a direction. A channel with no
       // symptom metric is never blacklisted — we have no evidence either way.
-      const failed = exps.filter((e) => e.channel === c.channel && e.dir === dir && e.review?.verdict === 'backfired')
+      // qi-trace: work-item="FH6-32" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/backfire-range.test.ts"
+      // A backfire disproves the range it tested, not the whole direction: brake balance
+      // 55 → 41 making the rear step out says nothing about 67 → 61, which sits between
+      // 55 (rear steps out) and 67 (fronts lock). Blocking every rearward move declared the
+      // car "out of levers" with that change left (FH6-32). So a move is blocked only when
+      // its target reaches the value the failed change started from. With no captured value
+      // there is no target, and the direction stays blocked.
+      const reaches = (e: Experiment) => to == null || (dir < 0 ? to <= e.from + 1e-9 : to >= e.from - 1e-9);
+      const failed = exps.filter((e) => e.channel === c.channel && e.dir === dir && e.review?.verdict === 'backfired' && reaches(e))
         .sort((a, b) => (b.review!.symptomDeltaPct ?? 0) - (a.review!.symptomDeltaPct ?? 0))[0];
       if (failed) {
         const rv = failed.review!;
@@ -617,14 +625,17 @@ export function buildPlan(
   const ACTIONABLE = 0.25;                       // below this a symptom isn't worth chasing
   const worst = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
   const worstSeverity = worst ? worst[1] : 0;
+  // Only the worst symptom's own levers count as used up: ride heights marked at their
+  // minimum (bottoming) aren't brake levers, yet "out of levers" counted them (FH6-32).
+  const blockedForWorst = worst ? blocked.filter((b) => b.symptom === worst[0]).length : 0;
   const state: TuneStatus['state'] = primary ? 'tuning'
-    : worstSeverity >= ACTIONABLE && blocked.length ? 'limited' : 'dialled-in';
+    : worstSeverity >= ACTIONABLE && blockedForWorst > 0 ? 'limited' : 'dialled-in';
   const status: TuneStatus = {
     state,
     worstSymptom: worst ? worst[0] : null,
     worstSeverity: +worstSeverity.toFixed(2),
     openLevers: open.length + recoveries.length,
-    blockedLevers: blocked.length,
+    blockedLevers: blockedForWorst,
   };
   return { primary, thisRun, perRun, queued, blocked, dominant, experiments: exps, lastChange: lastChanges[0] ?? null, lastChanges, quality, status };
 }
