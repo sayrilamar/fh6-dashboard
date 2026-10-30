@@ -5,10 +5,10 @@ import { useMeta, dismissReport, send } from '../store';
 import { fmt, lapTime } from '../format';
 import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot, EventType } from '../types';
 import { CHANNELS, isGearRatioKey, learnGain, applyGain } from '../tune';
-import { buildPlan, GROUP_LABEL, leverGroup, SYMPTOM_LABEL } from '../plan';
+import { buildPlan, GROUP_LABEL, leverGroup, previousSameTune, SYMPTOM_LABEL, tuneVerdict } from '../plan';
 import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
 import type { GearContext } from '../gearing';
-import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange } from '../plan';
+import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange, TuneVerdict } from '../plan';
 import { usePerRun } from '../perRun';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
@@ -2412,6 +2412,31 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
 }
 
 
+// The top-of-report verdict when a car has reached its best tune for its build (FH6-33).
+function TuneVerdictBanner({ v }: { v: TuneVerdict }) {
+  const optimal = v.kind === 'optimal';
+  const color = optimal ? 'var(--green)' : 'var(--amber)';
+  return (
+    <div className={`note ${optimal ? 'ok' : 'warn'}`} style={{ marginBottom: 10, borderLeftColor: color, borderLeftWidth: 4, padding: '10px 12px' }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color }}>
+        {optimal ? '✓ Optimal tune reached for this build' : 'Best tune for this build — the levers are used up'}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        {optimal
+          ? <>No measured symptom is worth chasing. Changing a setting now is as likely to hurt as to help.</>
+          : <>The car still shows <b>{SYMPTOM_LABEL[v.symptom ?? ''] ?? v.symptom}</b>, but every setting that could fix it is used up
+            {v.usedUp.length > 0 && <>: {v.usedUp.map((c, i) => <span key={c.channel}>{i > 0 ? '; ' : ''}<b>{c.label}</b> ({c.blocked?.split('—')[0].trim()})</span>)}</>}.</>}
+        {' '}To go faster, change the build: tires, weight or power.
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
+        {v.confirmed
+          ? 'Confirmed: the previous run on this same tune reached the same verdict.'
+          : 'Not confirmed yet — run it once more without changing anything. One clean-looking run can be luck.'}
+      </div>
+    </div>
+  );
+}
+
 // One change-verdict note: did the change made before this run move its symptom?
 function LastChangeNote({ lc }: { lc: ChangeReview }) {
   const tone = lc.verdict === 'worked' ? 'info' : lc.verdict === 'backfired' ? 'crit' : 'warn';
@@ -2551,6 +2576,12 @@ function Report({ s }: { s: SessionSummary }) {
   // reasons from one plan instead of each card deciding independently.
   const perRun = usePerRun();
   const plan = planForSession(s, meta.sessions, perRun);
+  // Best tune reached? Confirmed when the run before, on the same tune, said so too (FH6-33).
+  const verdict = (() => {
+    if (!plan) return null;
+    const prev = previousSameTune(s, meta.sessions);
+    return tuneVerdict(s, plan, prev ? planForSession(prev, meta.sessions, perRun) : null);
+  })();
 
   // A run's comparable time: a circuit fastest lap OR — for a point-to-point / sprint
   // (Rivals street races), which never cross start/finish so bestLap stays 0 — the
@@ -2587,6 +2618,7 @@ function Report({ s }: { s: SessionSummary }) {
 
   return (
     <PlanCtx.Provider value={plan}>
+      {verdict && <TuneVerdictBanner v={verdict} />}
       {noTuneEntered && (
         <div className="note warn" style={{ marginBottom: 10 }}>
           <b>No in-game tune entered for this car yet.</b>

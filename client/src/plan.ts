@@ -650,3 +650,41 @@ export const SYMPTOM_LABEL: Record<string, string> = {
   aeroBalance: 'balance shifts with speed',
   launch: 'launch traction',
 };
+
+// qi-trace: work-item="FH6-33" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/tune-verdict.test.ts"
+// Has this car reached its best tune for its current build? Only when the plan offers no
+// change: either no symptom is worth chasing ('optimal'), or one remains and every lever
+// for it is used up ('build-limit'). Confirmed when the run before, on the same tune,
+// reached the same verdict — one run can read clean by luck. A run with no cornering data
+// (a few seconds parked on the grid) has no symptoms to read, so it never earns a verdict:
+// two such 0 hp captures read "optimal" before this check.
+export interface TuneVerdict {
+  kind: 'optimal' | 'build-limit';
+  confirmed: boolean;
+  symptom: string | null;        // build-limit: the symptom that remains
+  usedUp: PlannedChange[];       // build-limit: its levers, all blocked
+}
+export function tuneVerdict(s: SessionSummary, plan: Plan, previous: Plan | null): TuneVerdict | null {
+  if (plan.status.state === 'tuning' || !s.analytics?.handling) return null;
+  const kind = plan.status.state === 'dialled-in' ? 'optimal' : 'build-limit';
+  const symptom = kind === 'build-limit' ? plan.status.worstSymptom : null;
+  return {
+    kind,
+    confirmed: previous != null && previous.status.state === plan.status.state,
+    symptom,
+    usedUp: symptom ? plan.blocked.filter((b) => b.symptom === symptom) : [],
+  };
+}
+
+// The comparable run just before this one, if it ran exactly the same tune: the only run
+// that can confirm a verdict. A run with any setting different is a different car.
+export function previousSameTune(s: SessionSummary, sessions: SessionSummary[]): SessionSummary | null {
+  const t = s.meta?.tune;
+  if (!t || !Object.keys(t).length) return null;
+  const prev = sessions
+    .filter((x) => x.startedAt < s.startedAt && comparable(s, x) && x.meta?.tune && x.analytics?.handling)
+    .sort((a, b) => b.startedAt - a.startedAt)[0];
+  if (!prev) return null;
+  const pt = prev.meta!.tune!;
+  return Object.keys({ ...t, ...pt }).every((k) => t[k] === pt[k]) ? prev : null;
+}
