@@ -11,6 +11,7 @@
 // with the runs: every past run where we advised RAISE proves the optimum is above that
 // value; every RUN where we advised LOWER proves it is below.
 
+import { sameEventType } from './events';
 import { CHANNELS, isGearRatioKey } from './tune';
 import type { SessionSummary } from './types';
 
@@ -92,6 +93,7 @@ export function bracketFor(
   // side of that value the optimum lies on.
   const hist = sessions
     .filter((x) => x.meta?.carOrdinal === s.meta?.carOrdinal && x.startedAt <= s.startedAt
+      && sameEventType(s, x) // a dirt run's bracket says nothing about tarmac (FH6-28)
       && typeof x.meta?.tune?.[channel] === 'number' && x.analytics)
     .sort((a, b) => a.startedAt - b.startedAt);
   for (const run of hist) {

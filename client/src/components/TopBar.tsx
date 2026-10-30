@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getLatest, send, useMeta, useTick } from '../store';
 import { PreRunTune } from './PreRunTune';
-import type { TuneSnapshot, TuneLimits } from '../types';
+import type { EventType, TuneLimits, TuneSnapshot } from '../types';
 
 const CLASS_NAMES: Record<number, string> = {
   0: 'D', 1: 'C', 2: 'B', 3: 'A', 4: 'S1', 5: 'S2', 6: 'X',
@@ -37,7 +37,7 @@ export function TopBar({ view, onView }: { view: 'live' | 'engineer'; onView: (v
     setAskTune(true);
   };
 
-  const beginRecording = (tune: TuneSnapshot, limits: TuneLimits) => {
+  const beginRecording = (tune: TuneSnapshot, limits: TuneLimits, eventType: EventType | null) => {
     setAskTune(false);
     // Only name + tune are sent — the server takes the car identity (drivetrain,
     // cylinders, …) from the first real telemetry frame, so pressing RECORD on a
@@ -48,6 +48,7 @@ export function TopBar({ view, onView }: { view: 'live' | 'engineer'; onView: (v
         carName: carName.trim() || undefined,
         tune: Object.keys(tune).length ? tune : undefined,
         limits: Object.keys(limits).length ? limits : undefined,
+        eventType: eventType ?? undefined, // FH6-28
       },
     });
   };

@@ -19,6 +19,7 @@
 // This is only trustworthy with REAL (settings → outcome) pairs, which is why the tune
 // is captured before the run rather than inferred afterwards.
 
+import { sameEventType } from './events';
 import type { SessionSummary, TuneSnapshot } from './types';
 
 export type ChannelKind = 'abs' | 'pct';
@@ -148,8 +149,8 @@ export interface Gain {
 
 const NEUTRAL: Gain = { mult: 1, confidence: 'none', note: '' };
 
-// Learn a per-channel step multiplier from the two most recent runs (same car) that
-// recorded a tune AND differ in this channel.
+// Learn a per-channel step multiplier from the two most recent runs (same car, same kind of
+// event) that recorded a tune AND differ in this channel.
 //
 // `deltaOf(session)` must return this section's naive recommended delta for that run —
 // the same number the report would have shown then.
@@ -162,6 +163,7 @@ export function learnGain(
   const hist = sessions
     .filter((x) => x.startedAt <= s.startedAt && x.meta?.tune && typeof x.meta.tune[channel] === 'number')
     .filter((x) => s.meta?.carOrdinal == null || x.meta?.carOrdinal === s.meta?.carOrdinal)
+    .filter((x) => sameEventType(s, x)) // a dirt pair's response says nothing about tarmac (FH6-28)
     .sort((a, b) => a.startedAt - b.startedAt);
   if (hist.length < 2) return NEUTRAL;
 

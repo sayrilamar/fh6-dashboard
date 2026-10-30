@@ -2,6 +2,7 @@
 // in-memory aggregates that become a post-session "tuning report" (power band
 // for gearing, peak power/torque RPM, max grip, lap times, thermal trends).
 
+import { validEventType } from './event-types.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,8 @@ export class Recorder {
     this.pendingTune = meta.tune && typeof meta.tune === 'object' ? meta.tune : null;
     // Channels the driver flagged as at their in-game limit (car-specific ranges).
     this.pendingLimits = meta.limits && typeof meta.limits === 'object' ? meta.limits : null;
+    // The kind of event (road, dirt, free roam, …), which the telemetry never says (FH6-28).
+    this.pendingEventType = validEventType(meta.eventType);
     return this.status();
   }
 
@@ -62,7 +65,9 @@ export class Recorder {
     this.stream = fs.createWriteStream(file, { flags: 'a' });
     // Header record so a rebuilt-from-jsonl summary keeps the tune. Frame loops skip
     // any line without .t/.d, so this is safe to prepend.
-    if (meta.tune || meta.limits) this.stream.write(JSON.stringify({ type: 'session-meta', tune: meta.tune, limits: meta.limits }) + '\n');
+    if (meta.tune || meta.limits || meta.eventType) {
+      this.stream.write(JSON.stringify({ type: 'session-meta', tune: meta.tune, limits: meta.limits, eventType: meta.eventType }) + '\n');
+    }
     this.active = true;
     this.armed = false;
     this.prev = { speedMs: null, ts: 0, gear: null, rpm: 0, throttle: 0 };
@@ -81,6 +86,7 @@ export class Recorder {
         drivetrain: t.drivetrain, numCylinders: t.numCylinders,
         tune: this.pendingTune || undefined,
         limits: this.pendingLimits || undefined,
+        eventType: this.pendingEventType,
       });
     }
     if (!this.active || !this.session) return null;
@@ -156,12 +162,18 @@ export class Recorder {
     let meta = {};
     let tune = null;
     let limits = null;
+    let eventType;
     for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
       if (!line) continue;
       let frame;
       try { frame = JSON.parse(line); } catch { continue; }
       // Header record written at capture time — carries the pre-run tune.
-      if (frame && frame.type === 'session-meta') { if (frame.tune) tune = frame.tune; if (frame.limits) limits = frame.limits; continue; }
+      if (frame && frame.type === 'session-meta') {
+        if (frame.tune) tune = frame.tune;
+        if (frame.limits) limits = frame.limits;
+        eventType = validEventType(frame.eventType);
+        continue;
+      }
       if (!frame || !frame.t || !frame.d) continue;
       if (startedAt == null) {
         startedAt = frame.ts;
@@ -173,6 +185,7 @@ export class Recorder {
           drivetrain: t.drivetrain, numCylinders: t.numCylinders,
           ...(tune ? { tune } : {}),
           ...(limits ? { limits } : {}),
+          ...(eventType ? { eventType } : {}),
         };
       }
       prev = applyFrame(agg, frame, prev);
@@ -210,6 +223,21 @@ export class Recorder {
       })
       .filter(Boolean)
       .sort((a, b) => b.startedAt - a.startedAt);
+  }
+
+  // Label a past run's event type from the Tuning Report (FH6-28), or clear it with null.
+  // The summary is the record the app reads; the .jsonl keeps the type it was recorded with.
+  setEventType(id, eventType) {
+    const file = path.join(SESSIONS_DIR, `${safeId(id)}.summary.json`);
+    if (!fs.existsSync(file)) return null;
+    const summary = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const ev = validEventType(eventType);
+    if (eventType != null && !ev) return null; // unknown string: refuse, change nothing
+    summary.meta = { ...(summary.meta || {}) };
+    if (ev) summary.meta.eventType = ev;
+    else delete summary.meta.eventType;
+    fs.writeFileSync(file, JSON.stringify(summary, null, 2));
+    return summary;
   }
 
   getSummary(id) {

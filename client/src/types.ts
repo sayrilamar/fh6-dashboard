@@ -126,6 +126,10 @@ export type TuneSnapshot = Record<string, number>;
 // recommending a change the game won't accept.
 export type TuneLimits = Record<string, 'min' | 'max'>;
 
+// The kind of event a run was recorded in, chosen on the pre-run card (FH6-28). The
+// telemetry never says, and runs of different kinds aren't comparable.
+export type EventType = 'road' | 'street' | 'dirt' | 'crossCountry' | 'drag' | 'drift' | 'freeRoam';
+
 export interface SessionMeta {
   carName?: string;
   carOrdinal?: number;
@@ -135,6 +139,7 @@ export interface SessionMeta {
   numCylinders?: number;
   tune?: TuneSnapshot;
   limits?: TuneLimits;
+  eventType?: EventType;
 }
 
 export interface SessionAnalytics {

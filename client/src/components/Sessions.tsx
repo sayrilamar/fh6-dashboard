@@ -3,7 +3,7 @@ import { Card, SectionHead, Tile } from './Card';
 import type { Status } from './Card';
 import { useMeta, dismissReport, send } from '../store';
 import { fmt, lapTime } from '../format';
-import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot } from '../types';
+import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot, EventType } from '../types';
 import { CHANNELS, isGearRatioKey, learnGain, applyGain } from '../tune';
 import { buildPlan, SYMPTOM_LABEL } from '../plan';
 import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
@@ -14,6 +14,8 @@ import type { MoveField } from '../handling';
 import { brakeMove, diffMove } from '../rows';
 import { damperMove } from '../damping';
 import { clampToLimit, markedLimit } from '../limits';
+import { EVENT_TYPES, eventLabel, sameEventType } from '../events';
+import { tireDeltas } from '../tires';
 import type { LimitOf } from '../limits';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
@@ -394,8 +396,10 @@ function inheritSettings<T extends object>(
     }
   }
   const prior = sessions.filter((x) => x.startedAt < s.startedAt).sort((a, b) => a.startedAt - b.startedAt);
-  const sameCar = prior.filter((x) => s.meta?.carOrdinal != null && x.meta?.carOrdinal === s.meta?.carOrdinal);
-  const chain = sameCar.length ? sameCar : prior;
+  // Same car, and the same kind of event: a dirt run's advice doesn't carry into a road
+  // tune (FH6-28). Runs recorded before event types existed still chain.
+  const sameCar = prior.filter((x) => s.meta?.carOrdinal != null && x.meta?.carOrdinal === s.meta?.carOrdinal && sameEventType(s, x));
+  const chain = sameCar.length ? sameCar : prior.filter((x) => sameEventType(s, x));
   if (!chain.length) {
     // The per-car `.c.` key is auto-written from the recommendation, not a user edit.
     try { const v = localStorage.getItem(`${prefix}.c.${s.meta?.carOrdinal ?? 'unknown'}`); if (v) return { cur: JSON.parse(v), from: 'car', edited: false }; } catch { /* ignore */ }
@@ -1388,7 +1392,7 @@ function pooledDamping(s: SessionSummary, sessions: SessionSummary[]): SessionAn
   const keys = ['frontRebound', 'rearRebound', 'frontBump', 'rearBump'] as const;
   if (keys.some((k) => typeof t[k] !== 'number')) return d;
   const peers = sessions.filter((x) =>
-    x.meta?.carOrdinal === s.meta?.carOrdinal && x.analytics?.damping &&
+    x.meta?.carOrdinal === s.meta?.carOrdinal && sameEventType(s, x) && x.analytics?.damping &&
     keys.every((k) => x.meta?.tune?.[k] === t[k]));
   if (peers.length < 3) return d; // not enough repeats to pool — use the single run
   const P = peers.map((x) => x.analytics!.damping!);
@@ -1418,7 +1422,7 @@ function pooledRideHeight(s: SessionSummary, sessions: SessionSummary[]): Sessio
     const v = t[key];
     if (typeof v !== 'number') return null;
     const peers = sessions.filter((x) =>
-      x.meta?.carOrdinal === s.meta?.carOrdinal && x.meta?.tune?.[key] === v && x.analytics?.rideHeight);
+      x.meta?.carOrdinal === s.meta?.carOrdinal && sameEventType(s, x) && x.meta?.tune?.[key] === v && x.analytics?.rideHeight);
     if (peers.length < 3) return null; // not enough repeats to pool — use the single run
     return {
       peak: med(peers.map((x) => x.analytics!.rideHeight![`${end}PeakComp`])),
@@ -1569,31 +1573,8 @@ const PSI_MIN = 15, PSI_MAX = 55;
 // share this one rule (FH6-23). Every confirmed pressure so far sits on the 0.5 grid.
 const psiMove = (f: { base: number }): MoveField => ({ mode: 'abs', base: f.base, min: PSI_MIN, max: PSI_MAX, step: 0.5 });
 
-function tireDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
-  const tp = a.tires;
-  const o: Record<string, { d: number; why: string }> = {};
-  if (!tp) return o;
-  const half = (n: number) => Math.round(n * 2) / 2; // 0.5-psi steps
-  // PRESSURE → TEMPERATURE DIRECTION. Pressure controls sidewall FLEX, and flex is what
-  // generates heat, so this runs the real-world way in FH6:
-  //   LOWER psi → more flex → tires HEAT UP.   RAISE psi → less flex → tires COOL DOWN.
-  // This was inverted here originally ("cold → RAISE pressure to warm them"), which drove
-  // cold tires further out of the window on every run. FH6 community physics guides state
-  // the real-world direction explicitly: lower 0.5 psi when tires stay cold, raise 0.5 psi
-  // when they overheat.
-  const end = (temp: number, label: string): { d: number; why: string } => {
-    const err = temp - tp.idealF; // + = hot, − = cold
-    if (err > 15) return { d: Math.min(3, Math.max(0.5, half(err / 15))), why: `${label} tires run hot (${temp}°F vs ${tp.idealF} ideal) — RAISE pressure to cut sidewall flex so they stop building heat` };
-    if (err < -15) return { d: -Math.min(3, Math.max(0.5, half(-err / 15))), why: `${label} tires run cold (${temp}°F vs ${tp.idealF} ideal) — LOWER pressure so the sidewall flexes more and builds heat` };
-    return { d: 0, why: `${label} tires in the grip window (${temp}°F) — hold` };
-  };
-  o.frontPsi = end(tp.frontTempF, 'Front');
-  o.rearPsi = end(tp.rearTempF, 'Rear');
-  return o;
-}
-
-function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): TireSettings {
-  const deltas = tireDeltas(a);
+function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf, ev?: EventType): TireSettings {
+  const deltas = tireDeltas(a, ev);
   const out: TireSettings = { ...cur };
   for (const f of TIRE_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
@@ -1613,10 +1594,10 @@ function TirePressure({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.tires) return;
-    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur, s.analytics, plan, limitOf(s), s.meta?.eventType))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!tp) return null;
-  const deltas = adaptDeltas(tireDeltas(s.analytics!), s, meta.sessions, tireDeltas);
+  const deltas = adaptDeltas(tireDeltas(s.analytics!, s.meta?.eventType), s, meta.sessions, (x) => tireDeltas(x));
   const plannedTarget = (ch: string) => targetFromPlan(plan, ch);
   const update = (k: keyof TireSettings, v: string) => {
     const next = { ...cur, [k]: v === '' ? undefined : Number(v) };
@@ -2147,7 +2128,7 @@ function carHasEnteredTune(s: SessionSummary, sessions: SessionSummary[]): boole
 export interface PooledSymptoms { trailBrake: number; power: number; grip: number; usRate: number; runs: number }
 function pooledSymptoms(s: SessionSummary, sessions: SessionSummary[], n = 5): PooledSymptoms | null {
   const recent = sessions
-    .filter((x) => x.meta?.carOrdinal === s.meta?.carOrdinal && x.startedAt <= s.startedAt && x.analytics?.handling)
+    .filter((x) => x.meta?.carOrdinal === s.meta?.carOrdinal && sameEventType(s, x) && x.startedAt <= s.startedAt && x.analytics?.handling)
     .sort((a, b) => b.startedAt - a.startedAt)
     .slice(0, n);
   if (recent.length < 2) return null;
@@ -2164,7 +2145,7 @@ function pooledSymptoms(s: SessionSummary, sessions: SessionSummary[], n = 5): P
   };
 }
 
-function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAnalytics['rideHeight'], ps?: PooledSymptoms | null, pooledDamp?: SessionAnalytics['damping']): Candidate[] {
+function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAnalytics['rideHeight'], ps?: PooledSymptoms | null, pooledDamp?: SessionAnalytics['damping'], ev?: EventType): Candidate[] {
   const out: Candidate[] = [];
   const sev = (x: number) => Math.max(0, Math.min(1, x));
   const h = a.handling;
@@ -2191,7 +2172,7 @@ function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAn
   const bd = brakeAdvice(a);
   const hd = handlingDeltas(a);
   const dm = dampingDeltas(a, pooledDamp);
-  const td = tireDeltas(a);
+  const td = tireDeltas(a, ev);
   const rd = rideHeightDeltas(a, pooledRH);
   const ad = aeroDeltas(a);
 
@@ -2285,6 +2266,8 @@ function deltaLookup(channel: string): ((x: SessionSummary) => number | null) | 
   };
   const fn = fns[channel];
   if (!fn) return null;
+  // Tire advice reads the run's event type: a loose-surface run was told to hold (FH6-28).
+  if (fn === tireDeltas) return (x: SessionSummary) => (x.analytics ? tireDeltas(x.analytics, x.meta?.eventType)[channel]?.d ?? null : null);
   return (x: SessionSummary) => (x.analytics ? fn(x.analytics)[channel]?.d ?? null : null);
 }
 
@@ -2534,8 +2517,27 @@ export function planForSession(s: SessionSummary, sessions: SessionSummary[]): P
       pooledRideHeight(s, sessions),
       pooledSymptoms(s, sessions),
       pooledDamping(s, sessions),
+      s.meta?.eventType,
     ),
     deltaLookup,
+  );
+}
+
+// The run's event type (FH6-28), editable: runs recorded before event types existed, or
+// labelled wrongly, are fixed here. Clicking the current type clears it.
+function EventTypeRow({ s }: { s: SessionSummary }) {
+  const ev = s.meta?.eventType;
+  const set = (e: EventType | null) => send({ type: 'session-set-event', id: s.id, eventType: e });
+  return (
+    <div className="event-pick" style={{ marginBottom: 10 }}>
+      <span className="event-pick-label">Event</span>
+      {EVENT_TYPES.map((e) => (
+        <button key={e.key} className={`ev-chip${ev === e.key ? ' on' : ''}`} onClick={() => set(ev === e.key ? null : e.key)}>
+          {e.label}
+        </button>
+      ))}
+      {!ev && <span className="event-pick-hint">Unknown — label this run so it's only compared with runs of the same kind.</span>}
+    </div>
   );
 }
 
@@ -2562,6 +2564,7 @@ function Report({ s }: { s: SessionSummary }) {
       if (x.startedAt >= s.startedAt) return false;
       const p = timeOf(x);
       if (!p || p.kind !== cur.kind) return false; // don't compare a lap to a sprint
+      if (!sameEventType(s, x)) return false; // nor a dirt race to a road race (FH6-28)
       // Same-event guard for sprints: only compare races of ~the same length.
       if (cur.kind === 'race' && s.finishDistanceM && x.finishDistanceM &&
         Math.abs(x.finishDistanceM - s.finishDistanceM) > Math.max(50, s.finishDistanceM * 0.05)) return false;
@@ -2591,6 +2594,7 @@ function Report({ s }: { s: SessionSummary }) {
           </div>
         </div>
       )}
+      <EventTypeRow s={s} />
       {a && plan && <NextChange s={s} plan={plan} />}
 
       <Card
@@ -2780,7 +2784,8 @@ export function Engineer() {
   const [active, setActive] = useState('overview');
   const mainRef = useRef<HTMLDivElement>(null);
   const sessions = meta.sessions;
-  const selected = sel || meta.lastSession;
+  // Re-read the picked run from the live list, so a relabel (event type) shows at once.
+  const selected = (sel && meta.sessions.find((x) => x.id === sel.id)) || sel || meta.lastSession;
 
   // Scroll-spy: highlight whichever section is nearest the top of the canvas.
   useEffect(() => {
@@ -2848,7 +2853,7 @@ export function Engineer() {
                 <span>{lapTime(x.bestLap) || `${fmt(x.durationSec)}s`}</span>
               </div>
               <div className="run-meta">
-                <span>{fmt(x.peakHp)} hp</span>
+                <span>{fmt(x.peakHp)} hp{x.meta?.eventType ? ` · ${eventLabel(x.meta.eventType)}` : ''}</span>
                 <span>{x.maxSpeedKph ? `${fmt(x.maxSpeedKph * 0.621371)} mph` : ''}</span>
               </div>
             </div>

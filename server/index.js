@@ -123,6 +123,11 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'session', summary }));
         break;
       }
+      case 'session-set-event': {
+        // Label a past run's event type from the Tuning Report (FH6-28).
+        if (recorder.setEventType(cmd.id, cmd.eventType ?? null)) broadcast({ type: 'sessions', sessions: recorder.list() });
+        break;
+      }
       case 'session-delete': {
         recorder.delete(cmd.id);
         broadcast({ type: 'sessions', sessions: recorder.list() });

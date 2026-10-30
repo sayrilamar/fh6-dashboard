@@ -512,3 +512,17 @@ canvas { width: 100%; display: block; }
 .chip.go   { border-color: var(--amber); color: var(--amber); font-weight: 700; }
 .chip.hold { border-color: var(--line);  color: var(--muted); }
 .chip.crit { border-color: var(--red);   color: #ff8a8a; }
+
+/* Event type picker (FH6-28): pre-run card and the top of each Tuning Report. */
+.event-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.modal .event-pick { margin: 10px 16px 0; } /* line up with the pre-run card's header */
+.event-pick-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+.event-pick-hint { font-size: 10px; color: var(--amber); }
+.ev-chip {
+  background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  color: var(--muted); font-family: inherit; font-size: 10px;
+  padding: 3px 7px; cursor: pointer; white-space: nowrap;
+}
+.ev-chip:hover { border-color: var(--accent); color: var(--text); }
+.ev-chip.on { border-color: var(--accent); color: var(--text); font-weight: 700; }
+

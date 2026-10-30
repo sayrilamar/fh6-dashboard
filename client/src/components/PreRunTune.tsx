@@ -4,13 +4,14 @@ import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '
 import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing';
 import { planForSession } from './Sessions';
 import { clampToLimit, markedLimit } from '../limits';
-import type { TuneSnapshot, TuneLimits } from '../types';
+import type { EventType, TuneSnapshot, TuneLimits } from '../types';
+import { EVENT_TYPES, defaultEventType } from '../events';
 
 // Pre-run tune capture. Recording what's ACTUALLY on the car before the run (instead of
 // inferring it afterwards) is what makes the (settings → outcome) pairs real — which is
 // what the adaptive step size is learned from. It also means one entry per car: after
 // the first time the card pre-fills from your last run, so you only touch what changed.
-export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapshot, l: TuneLimits) => void; onCancel: () => void }) {
+export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapshot, l: TuneLimits, e: EventType | null) => void; onCancel: () => void }) {
   const meta = useMeta();
   // Re-render as telemetry arrives: RECORD is pressed on the grid, where the car is
   // still the #0/FWD placeholder. Without this the card would latch onto 'unknown'
@@ -81,6 +82,9 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
   // Levers the driver has flagged as at their in-game limit. Car-specific ranges
   // (springs, ride height, aero) can't be hardcoded, so this is how the planner learns
   // a lever is exhausted and moves to the next one. Carries over between runs.
+  // The kind of event (FH6-28): the telemetry never says, and runs of different kinds
+  // aren't compared. Pre-filled from this car's most recent labelled run.
+  const [eventType, setEventType] = useState<EventType | null>(() => defaultEventType(meta.sessions, carOrdinal));
   const [limits, setLimits] = useState<TuneLimits>(() => {
     const prior = meta.sessions
       .filter((x) => x.meta?.limits && (carOrdinal == null || x.meta?.carOrdinal === carOrdinal))
@@ -242,6 +246,16 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
           </span>
         </header>
 
+        <div className="event-pick">
+          <span className="event-pick-label">Event</span>
+          {EVENT_TYPES.map((e) => (
+            <button key={e.key} className={`ev-chip${eventType === e.key ? ' on' : ''}`} onClick={() => setEventType(e.key)}>
+              {e.label}
+            </button>
+          ))}
+          {!eventType && <span className="event-pick-hint">Pick one, so this run is only compared with runs of the same kind.</span>}
+        </div>
+
         {planPending && plannedChannel && (
           <div className="note info modal-recbar">
             <span>
@@ -347,8 +361,8 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
           </span>
           <div className="modal-actions">
             <button className="btn" onClick={onCancel}>Cancel</button>
-            <button className="btn" onClick={() => onConfirm({}, {})}>Skip &amp; record</button>
-            <button className="btn rec" onClick={() => onConfirm(snapshot(), limits)}>Confirm &amp; record</button>
+            <button className="btn" onClick={() => onConfirm({}, {}, eventType)}>Skip &amp; record</button>
+            <button className="btn rec" onClick={() => onConfirm(snapshot(), limits, eventType)}>Confirm &amp; record</button>
           </div>
         </footer>
       </div>

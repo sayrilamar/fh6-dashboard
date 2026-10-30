@@ -16,6 +16,7 @@
 // from a distraction or a missed brake point exceeds the effect of a tuning change, so
 // every verdict here comes from measured car behaviour (SYMPTOM_METRIC) instead.
 
+import { comparableRuns, sameEventType } from './events';
 import type { SessionSummary, SessionAnalytics } from './types';
 import { CHANNELS, isGearRatioKey } from './tune';
 import { bracketFor, usesBisection, runsRemaining } from './bisect';
@@ -330,15 +331,11 @@ export function reviewChange(
   return { channel: exp.channel, from: exp.from, to: exp.to, verdict, metricLabel: spec.label, before: m0, after: m1, symptomDeltaPct, scatterSd, changeInSd, floorHeavy, thinData, advice };
 }
 
-// Comparable runs = same car and same event, so the symptom mix is like-for-like.
-// NOTE: no lap/race time is required — dropping that lets practice and free-roam runs
-// contribute symptom data too, which they previously could not.
-function comparable(s: SessionSummary, x: SessionSummary): boolean {
-  if (s.meta?.carOrdinal != null && x.meta?.carOrdinal !== s.meta?.carOrdinal) return false;
-  if (s.finishDistanceM && x.finishDistanceM &&
-    Math.abs(x.finishDistanceM - s.finishDistanceM) > Math.max(50, s.finishDistanceM * 0.05)) return false;
-  return true;
-}
+// Comparable runs = same car and same event, so the symptom mix is like-for-like. The rule
+// (car, event type, route length) lives in events.ts so bisection and the pre-fill share it
+// (FH6-28). No lap/race time is required: practice runs still contribute symptom data, but a
+// run labelled free roam is no longer pooled with a labelled race.
+const comparable = comparableRuns;
 
 // Mine completed A/B tests out of history. Because the planner issues ONE change per
 // run, most consecutive run pairs differ in exactly one channel — which makes the lap
@@ -385,6 +382,7 @@ function unresponsive(channel: string, s: SessionSummary, sessions: SessionSumma
   const hist = sessions
     .filter((x) => x.startedAt <= s.startedAt && x.meta?.tune && typeof x.meta.tune[channel] === 'number')
     .filter((x) => s.meta?.carOrdinal == null || x.meta?.carOrdinal === s.meta?.carOrdinal)
+    .filter((x) => sameEventType(s, x)) // a lever dead on dirt may still work on tarmac (FH6-28)
     .sort((a, b) => a.startedAt - b.startedAt);
   if (hist.length < 3) return false;
   // Look at the channel's WHOLE movement history, not a fixed window of recent runs.

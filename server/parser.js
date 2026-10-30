@@ -240,6 +240,12 @@ export function parsePacket(buf) {
           rr: f(buf, O.tireWearRR),
         }
       : null,
+
+    // Bytes the app doesn't decode, kept raw so recordings can show whether FH6 encodes
+    // the event, track or surface in them (FH6-28): the 12-byte Horizon placeholder, and
+    // whatever follows the base packet (and the tire-wear block, when present). Hex.
+    rawPlaceholder: buf.subarray(SLED_SIZE, SLED_SIZE + 12).toString('hex'),
+    rawTail: buf.subarray(hasWear ? O.tireWearFL + 16 : BASE_SIZE).toString('hex'),
   };
 
   return t;
