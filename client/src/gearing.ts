@@ -449,7 +449,7 @@ export function finalDriveAdvice(
   return { ...a, solved: false, gainPct: null, scale: 1 + a.pct / 100, fromMph: null, toMph: null };
 }
 
-// qi-trace: work-item="FH6-4" acceptance-criteria="AC-1, AC-2" risk-tier="medium" test-coverage="TODO(qi-trace): FH6-5 adds the tests"
+// qi-trace: work-item="FH6-4" acceptance-criteria="AC-1, AC-2" risk-tier="medium" test-coverage="tests/unit/final-drive-target.test.ts"
 // The pre-run screen's final-drive target: the recorded run's final drive times the
 // solved scale, rounded to 2 decimals, or null when there is nothing to change.
 //
