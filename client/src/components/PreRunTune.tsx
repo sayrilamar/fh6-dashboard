@@ -3,6 +3,8 @@ import { getLatest, useMeta, useTick } from '../store';
 import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
 import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing';
 import { planForSession } from './Sessions';
+import { GROUP_LABEL, leverGroup } from '../plan';
+import { setPerRun, usePerRun } from '../perRun';
 import { clampToLimit, markedLimit } from '../limits';
 import type { EventType, TuneSnapshot, TuneLimits } from '../types';
 import { EVENT_TYPES, defaultEventType } from '../events';
@@ -175,15 +177,20 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
   // judged it, it was never marked 'backfired', and decorate() never blocked it. It
   // marched to its rail unchecked while rear grip fell 36%.
   //
-  // The planner's pick is now the headline, blocked levers are withheld, and the bulk
-  // apply is gone.
+  // The planner's picks are now the headline, blocked levers are withheld, and the bulk
+  // apply is gone. Since FH6-30 the picks are one per lever group (never two for the same
+  // symptom), and mining accepts a pair whose changes all sit in different groups.
   const lastRun = useMemo(() => {
     return [...meta.sessions]
       .filter((x) => (carOrdinal == null || x.meta?.carOrdinal === carOrdinal) && x.analytics)
       .sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
   }, [meta.sessions, carOrdinal]);
-  const plan = useMemo(() => (lastRun ? planForSession(lastRun, meta.sessions) : null), [lastRun, meta.sessions]);
-  const plannedKey = plan?.primary?.channel ?? null;
+  const perRun = usePerRun();
+  const plan = useMemo(() => (lastRun ? planForSession(lastRun, meta.sessions, perRun) : null), [lastRun, meta.sessions, perRun]);
+  const plannedKeys = useMemo(() => new Set((plan?.thisRun ?? []).map((c) => c.channel)), [plan]);
+  // Gearing is solved in its own section, outside the planner. With one change per group
+  // and no planned gearing change, applying the solved gearing alongside is fine.
+  const gearingFree = perRun === 'group' && ![...plannedKeys].some((k) => leverGroup(k) === 'gearing');
   const blockedKeys = useMemo(() => {
     const m = new Map<string, string>();
     for (const b of plan?.blocked ?? []) if (b.blocked) m.set(b.channel, b.blocked);
@@ -196,15 +203,21 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     const cur = vals[key] === '' || vals[key] == null ? null : Number(vals[key]);
     return cur == null || Math.abs(cur - r) > 1e-9;
   };
-  // Only the planner's chosen lever is offered for one-click apply. Blocked levers are
-  // never offered — those are the ones already at a rail, or measured to have made the
-  // symptom worse.
-  const plannedChannel = plannedKey ? channels.find((c) => c.key === plannedKey) ?? null : null;
-  const planPending = !!plannedChannel && !blockedKeys.has(plannedChannel.key) && differsFromRec(plannedChannel.key);
+  // Only the planner's changes for this run are offered for one-click apply (one per lever
+  // group, or one — FH6-30). Blocked levers are never offered — those are the ones
+  // already at a rail, or measured to have made the symptom worse.
+  const pending = (plan?.thisRun ?? [])
+    .map((pc) => ({ pc, ch: channels.find((c) => c.key === pc.channel) ?? null }))
+    .filter((x) => x.ch && !blockedKeys.has(x.pc.channel) && differsFromRec(x.pc.channel));
   const applyPlanned = () => {
-    if (!plannedChannel) return;
-    const r = recs[plannedChannel.key];
-    if (r != null) setVals((p) => ({ ...p, [plannedChannel.key]: String(r) }));
+    setVals((p) => {
+      const next = { ...p };
+      for (const { pc } of pending) {
+        const r = recs[pc.channel];
+        if (r != null) next[pc.channel] = String(r);
+      }
+      return next;
+    });
   };
 
   const snapshot = (): TuneSnapshot => {
@@ -256,19 +269,48 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
           {!eventType && <span className="event-pick-hint">Pick one, so this run is only compared with runs of the same kind.</span>}
         </div>
 
-        {planPending && plannedChannel && (
+        <div className="event-pick">
+          <span className="event-pick-label">Changes per run</span>
+          <button className={`ev-chip${perRun === 'group' ? ' on' : ''}`} onClick={() => setPerRun('group')}
+            title="One change per lever group (braking, throttle, gearing, chassis), never two for the same symptom">
+            One per group
+          </button>
+          <button className={`ev-chip${perRun === 'one' ? ' on' : ''}`} onClick={() => setPerRun('one')}
+            title="One change per run: slower, for when the car's balance is still far off">
+            One
+          </button>
+        </div>
+
+        {pending.length === 1 && (() => {
+          const { pc, ch } = pending[0];
+          return (
+            <div className="note info modal-recbar">
+              <span>
+                Change <b>one thing</b> this run — the planner picked <b>{ch!.label}</b>
+                {pc.from != null && pc.to != null
+                  ? <> : {pc.from}{ch!.unit ?? ''} → <b>{pc.to}{ch!.unit ?? ''}</b></>
+                  : null}
+                {pc.why ? <span style={{ opacity: 0.8 }}> · {pc.why}</span> : null}
+              </span>
+              <button className="btn" onClick={applyPlanned}>Apply it</button>
+            </div>
+          );
+        })()}
+        {pending.length > 1 && (
           <div className="note info modal-recbar">
             <span>
-              Change <b>one thing</b> this run — the planner picked <b>{plannedChannel.label}</b>
-              {plan?.primary?.from != null && plan?.primary?.to != null
-                ? <> : {plan.primary.from}{plannedChannel.unit ?? ''} → <b>{plan.primary.to}{plannedChannel.unit ?? ''}</b></>
-                : null}
-              {plan?.primary?.why ? <span style={{ opacity: 0.8 }}> · {plan.primary.why}</span> : null}
+              Change <b>these {pending.length} things</b> this run, one per lever group:
+              {pending.map(({ pc, ch }) => (
+                <span key={pc.channel} title={pc.why}>
+                  {' '}· <span style={{ opacity: 0.8 }}>{GROUP_LABEL[leverGroup(pc.channel)]}</span> <b>{ch!.label}</b>
+                  {pc.from != null && pc.to != null ? <> {pc.from}{ch!.unit ?? ''} → <b>{pc.to}{ch!.unit ?? ''}</b></> : null}
+                </span>
+              ))}
             </span>
-            <button className="btn" onClick={applyPlanned}>Apply it</button>
+            <button className="btn" onClick={applyPlanned}>Apply them</button>
           </div>
         )}
-        {!planPending && plan?.status?.state === 'dialled-in' && (
+        {pending.length === 0 && plan?.status?.state === 'dialled-in' && (
           <div className="note info modal-recbar">
             <span>No symptom is above the action threshold — the car is dialled in. Change nothing and drive it.</span>
           </div>
@@ -305,7 +347,8 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
                 // A lever the planner has ruled out — at a rail, or measured to have made
                 // the symptom worse. Show why instead of offering the value.
                 const blockedWhy = blockedKeys.get(c.key) ?? null;
-                const isPlanned = c.key === plannedKey;
+                const isPlanned = plannedKeys.has(c.key);
+                const alongside = !isPlanned && gearingFree && leverGroup(c.key) === 'gearing';
                 return (
                   <div key={c.key} className="tune-row">
                     <label htmlFor={`tune-${c.key}`}>{c.label}{c.unit ? ` (${c.unit})` : ''}</label>
@@ -326,9 +369,13 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
                       <button
                         className={`rec-chip${differs && isPlanned ? ' on' : ''}`}
                         title={isPlanned
-                          ? "The planner's pick for this run — the one change to make"
-                          : 'Not this run\u2019s change. The planner picks ONE lever per run so the result stays attributable; moving several at once is what let a bad direction march unchecked.'}
-                        style={differs && !isPlanned ? { opacity: 0.55 } : undefined}
+                          ? (plannedKeys.size > 1 ? "One of the planner's changes for this run" : "The planner's pick for this run — the one change to make")
+                          : alongside
+                            ? 'Solved by the Gearing section. Gearing is its own group and nothing else this run touches it, so applying it alongside is fine.'
+                          : perRun === 'group'
+                            ? 'Not this run\u2019s change. This run already changes a lever in the same group, or one aimed at the same symptom; moving several of those at once is what let a bad direction march unchecked.'
+                            : 'Not this run\u2019s change. The planner picks ONE lever per run so the result stays attributable; moving several at once is what let a bad direction march unchecked.'}
+                        style={differs && !isPlanned && !alongside ? { opacity: 0.55 } : undefined}
                         onClick={() => setVals((p) => ({ ...p, [c.key]: String(rec) }))}
                       >
                         {differs ? `rec ${rec}` : 'on rec'}

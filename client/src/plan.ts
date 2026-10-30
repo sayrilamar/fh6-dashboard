@@ -1,7 +1,8 @@
-// Change planner — decides the ONE thing to change next.
+// Change planner — decides what to change next: one lever per group per run (FH6-30), or
+// one lever per run when the driver asks for it.
 //
-// WHY: with every section recommending independently, a single run could move 10
-// channels at once. That is fatal for two reasons:
+// WHY NOT EVERYTHING AT ONCE: with every section recommending independently, a single run
+// could move 10 channels at once. That is fatal for two reasons:
 //   1. You cannot attribute the result to any one change, so the learned step size
 //      (tune.ts) is estimated from a confounded experiment and is meaningless.
 //   2. Five levers all aimed at the same symptom over-correct wildly, and each one
@@ -10,7 +11,15 @@
 // -1.4°→-4.2°, front ARB 34→65 (rail), rear ARB 26→1 (rail), rear toe →1.0 (rail), and
 // the car ended 2.6 s SLOWER than the untouched baseline.
 //
-// So: one lever per run, chosen by a symptom playbook (primary lever first), skipping
+// WHY NOT ONE AT A TIME EITHER (FH6-29): one change per run with one run per setting gave
+// no decisive A/B verdict in two days, and cost hours. Each lever's advice reads one part
+// of the lap: braking levers read brake slip, throttle levers read power-on slip, gearing
+// is solved from the power curve. Levers in different groups therefore don't pile onto
+// the same reading. The chassis levers (ARB, springs, toe, camber, caster, ride height,
+// aero, dampers) all act on the same corner balance, so that group stays one at a time,
+// and no two changes in a run ever target the same symptom.
+//
+// So: per group, one lever chosen by a symptom playbook (primary lever first), skipping
 // levers that are at a rail or have been proven not to move the symptom — plus a hard
 // NO CLOCK: lap/track time is never consulted. On a controller the run-to-run variance
 // from a distraction or a missed brake point exceeds the effect of a tuning change, so
@@ -45,8 +54,8 @@ export interface PlannedChange extends Candidate {
   runsLeft?: number | null; // runs still needed to reach this channel's step resolution
 }
 
-// A completed A/B test: a pair of comparable runs where exactly ONE channel moved, so
-// the lap-time difference is genuinely attributable to that change.
+// A completed A/B test: a pair of comparable runs where each changed channel sits in a
+// different lever group, so each change is judged on its own symptom metric.
 export interface Experiment {
   channel: string;
   from: number;
@@ -55,13 +64,33 @@ export interface Experiment {
   review?: ChangeReview | null;   // symptom-based verdict, when the channel has a metric
 }
 
+// qi-trace: work-item="FH6-30" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/grouped-plan.test.ts"
+// Lever groups: which part of the lap each lever's advice is read from. A lever not
+// listed is chassis, the safe default — it then never shares a run with another chassis
+// change.
+export type LeverGroup = 'braking' | 'throttle' | 'gearing' | 'chassis';
+const LEVER_GROUP: Record<string, LeverGroup> = {
+  balance: 'braking', pressure: 'braking', frontDecel: 'braking', rearDecel: 'braking',
+  frontAccel: 'throttle', rearAccel: 'throttle', center: 'throttle',
+  gearbox: 'gearing', finalDrive: 'gearing',
+};
+export const leverGroup = (channel: string): LeverGroup =>
+  LEVER_GROUP[channel] ?? (isGearRatioKey(channel) ? 'gearing' : 'chassis');
+export const GROUP_LABEL: Record<LeverGroup, string> = { braking: 'Braking', throttle: 'Throttle', gearing: 'Gearing', chassis: 'Chassis' };
+
+// How many changes go out per run: one per lever group (default), or just one.
+export type PerRun = 'group' | 'one';
+
 export interface Plan {
-  primary: PlannedChange | null;
+  primary: PlannedChange | null;     // the first of thisRun: the worst symptom's lever
+  thisRun: PlannedChange[];          // every change to make before the next run
+  perRun: PerRun;
   queued: PlannedChange[];
   blocked: PlannedChange[];
   dominant: string | null;
   experiments: Experiment[];
-  lastChange: ChangeReview | null;   // did the previous single change actually work?
+  lastChange: ChangeReview | null;   // the first of lastChanges
+  lastChanges: ChangeReview[];       // did each change made before this run work?
   quality: RunQuality | null;        // enough clean data to trust the symptom readings?
   status: TuneStatus;                // done, still tuning, or out of levers?
 }
@@ -329,10 +358,11 @@ export function reviewChange(
 // run labelled free roam is no longer pooled with a labelled race.
 const comparable = comparableRuns;
 
-// Mine completed A/B tests out of history. Because the planner issues ONE change per
-// run, most consecutive run pairs differ in exactly one channel — which makes the lap
-// time difference directly attributable. That turns every run (including the failures)
-// into knowledge: a direction that measurably cost time is never recommended again.
+// Mine completed A/B tests out of history. The planner changes at most one lever per
+// group per run, so a consecutive run pair whose changes all sit in different groups is
+// attributable: each change is judged on its own symptom metric, read in its own part of
+// the lap. That turns every run (including the failures) into knowledge: a direction
+// that measurably made its symptom worse is never recommended again.
 export function experiments(s: SessionSummary, sessions: SessionSummary[]): Experiment[] {
   const hist = sessions
     .filter((x) => x.startedAt <= s.startedAt && comparable(s, x) && x.meta?.tune)
@@ -348,22 +378,24 @@ export function experiments(s: SessionSummary, sessions: SessionSummary[]): Expe
     // pair as confounded.
     const gearsMoved = changed.filter(isGearRatioKey);
     if (gearsMoved.length > 1) changed = ['gearbox', ...changed.filter((k) => !isGearRatioKey(k))];
-    if (changed.length !== 1) continue; // confounded — can't attribute
-    const k = changed[0];
-    if (k === 'gearbox') {
-      // Represent the box by its overall spread (1st ÷ top), which is what re-spacing changes.
-      const spread = (t: Record<string, number>) => {
-        const gs = Object.keys(t).filter(isGearRatioKey).sort((x, y) => Number(x.slice(4)) - Number(y.slice(4)));
-        return gs.length >= 2 ? +(t[gs[0]] / t[gs[gs.length - 1]]).toFixed(3) : 0;
-      };
-      const e: Experiment = { channel: 'gearbox', from: spread(at), to: spread(bt), dir: spread(bt) > spread(at) ? 1 : -1 };
+    // Two changes in one group push on the same reading: confounded, can't attribute.
+    if (!changed.length || new Set(changed.map(leverGroup)).size !== changed.length) continue;
+    for (const k of changed) {
+      if (k === 'gearbox') {
+        // Represent the box by its overall spread (1st ÷ top), which is what re-spacing changes.
+        const spread = (t: Record<string, number>) => {
+          const gs = Object.keys(t).filter(isGearRatioKey).sort((x, y) => Number(x.slice(4)) - Number(y.slice(4)));
+          return gs.length >= 2 ? +(t[gs[0]] / t[gs[gs.length - 1]]).toFixed(3) : 0;
+        };
+        const e: Experiment = { channel: 'gearbox', from: spread(at), to: spread(bt), dir: spread(bt) > spread(at) ? 1 : -1 };
+        e.review = reviewChange(e, A, B, sessions);
+        out.push(e);
+        continue;
+      }
+      const e: Experiment = { channel: k, from: at[k], to: bt[k], dir: bt[k] > at[k] ? 1 : -1 };
       e.review = reviewChange(e, A, B, sessions);
       out.push(e);
-      continue;
     }
-    const e: Experiment = { channel: k, from: at[k], to: bt[k], dir: bt[k] > at[k] ? 1 : -1 };
-    e.review = reviewChange(e, A, B, sessions);
-    out.push(e);
   }
   return out;
 }
@@ -419,11 +451,27 @@ function worseBy(rv: ChangeReview): string {
 // spent on it could never be judged.
 export const MANUAL_ONLY = new Set(['frontPsi', 'rearPsi']);
 
+// qi-trace: work-item="FH6-30" acceptance-criteria="AC-2" risk-tier="high" test-coverage="tests/unit/grouped-plan.test.ts"
+// The first change for each lever group, skipping any whose symptom a change already
+// targets. Order in, order out.
+export function pickPerGroup(ordered: PlannedChange[]): PlannedChange[] {
+  const groups = new Set<LeverGroup>(), symptoms = new Set<string>();
+  const out: PlannedChange[] = [];
+  for (const c of ordered) {
+    const g = leverGroup(c.channel);
+    if (groups.has(g) || symptoms.has(c.symptom)) continue;
+    groups.add(g); symptoms.add(c.symptom);
+    out.push(c);
+  }
+  return out;
+}
+
 export function buildPlan(
   s: SessionSummary,
   sessions: SessionSummary[],
   candidates: Candidate[],
   deltaOfFor: (channel: string) => ((x: SessionSummary) => number | null) | null,
+  perRun: PerRun = 'group',
 ): Plan {
   const tune = s.meta?.tune ?? null;
   const limits = s.meta?.limits ?? null;
@@ -431,8 +479,8 @@ export function buildPlan(
   const exps = experiments(s, sessions);
   const quality = runQuality(s);
 
-  // Review the change that produced THIS run, judged only on its targeted symptom.
-  let lastChange: ChangeReview | null = null;
+  // Review the changes that produced THIS run, each judged only on its targeted symptom.
+  const lastChanges: ChangeReview[] = [];
   {
     const hist = sessions
       .filter((x) => x.startedAt <= s.startedAt && comparable(s, x) && x.meta?.tune)
@@ -440,8 +488,10 @@ export function buildPlan(
     const idx = hist.findIndex((x) => x.id === s.id);
     if (idx > 0) {
       const prev = hist[idx - 1];
-      const e = exps.find((x) => prev.meta?.tune?.[x.channel] === x.from && s.meta?.tune?.[x.channel] === x.to);
-      if (e) lastChange = e.review ?? reviewChange(e, prev, s, sessions);
+      for (const e of exps.filter((x) => prev.meta?.tune?.[x.channel] === x.from && s.meta?.tune?.[x.channel] === x.to)) {
+        const r = e.review ?? reviewChange(e, prev, s, sessions);
+        if (r) lastChanges.push(r);
+      }
     }
   }
 
@@ -521,9 +571,9 @@ export function buildPlan(
   const blocked = all.filter((c) => c.blocked);
   // A change that just backfired is about to be put back, so don't also offer it as
   // the next thing to try.
-  const revert = lastChange?.verdict === 'backfired' ? lastChange.channel : null;
+  const reverts = new Set(lastChanges.filter((r) => r.verdict === 'backfired').map((r) => r.channel));
   const open = all
-    .filter((c) => !c.blocked && c.channel !== revert)
+    .filter((c) => !c.blocked && !reverts.has(c.channel))
     .sort((a, b) => (b.severity - a.severity) || (a.rank - b.rank));
 
   // A backfired experiment doesn't just disqualify a direction — it PROVES the value it
@@ -554,11 +604,15 @@ export function buildPlan(
     });
   }
 
-  // Only ONE change goes out per run — the highest-authority lever for the worst
-  // symptom. This is computed even when regressed, so a failed experiment always
-  // advances the loop (revert the culprit AND try the next lever) instead of dead-ending.
-  const primary = open[0] ?? recoveries[0] ?? null;
-  const queued = [...open.slice(1), ...(open.length ? recoveries : recoveries.slice(1))];
+  // This run's changes, in priority order (open levers by severity, then recoveries):
+  // one per lever group, never two for the same symptom (the playbooks cross groups —
+  // trail-brake oversteer lists brake balance AND rear toe). In 'one' mode, just the
+  // first. Computed even when regressed, so a failed experiment always advances the loop
+  // (revert the culprit AND try the next lever) instead of dead-ending.
+  const ordered = [...open, ...recoveries];
+  const thisRun = perRun === 'one' ? ordered.slice(0, 1) : pickPerGroup(ordered);
+  const primary = thisRun[0] ?? null;
+  const queued = ordered.filter((c) => !thisRun.includes(c));
   // Status is purely behavioural: is anything actionable left, and can we act on it?
   const ACTIONABLE = 0.25;                       // below this a symptom isn't worth chasing
   const worst = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
@@ -572,7 +626,7 @@ export function buildPlan(
     openLevers: open.length + recoveries.length,
     blockedLevers: blocked.length,
   };
-  return { primary, queued, blocked, dominant, experiments: exps, lastChange, quality, status };
+  return { primary, thisRun, perRun, queued, blocked, dominant, experiments: exps, lastChange: lastChanges[0] ?? null, lastChanges, quality, status };
 }
 
 export const SYMPTOM_LABEL: Record<string, string> = {

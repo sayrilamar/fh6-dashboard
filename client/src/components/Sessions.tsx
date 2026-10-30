@@ -5,10 +5,11 @@ import { useMeta, dismissReport, send } from '../store';
 import { fmt, lapTime } from '../format';
 import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot, EventType } from '../types';
 import { CHANNELS, isGearRatioKey, learnGain, applyGain } from '../tune';
-import { buildPlan, SYMPTOM_LABEL } from '../plan';
+import { buildPlan, GROUP_LABEL, leverGroup, SYMPTOM_LABEL } from '../plan';
 import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
 import type { GearContext } from '../gearing';
-import type { Candidate, Plan } from '../plan';
+import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange } from '../plan';
+import { usePerRun } from '../perRun';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
 import { brakeMove, diffMove } from '../rows';
@@ -46,7 +47,7 @@ function targetFromPlan(plan: Plan | null, channel: string): number | null {
     console.error(`targetFromPlan: unknown channel "${channel}" — not in CHANNELS, will never match the plan`);
   }
   if (!plan) return null;
-  const hit = [plan.primary, ...plan.queued, ...plan.blocked].find((c) => c && c.channel === channel);
+  const hit = [...plan.thisRun, ...plan.queued, ...plan.blocked].find((c) => c.channel === channel);
   return hit?.to ?? null;
 }
 
@@ -58,9 +59,14 @@ function ChannelStatus({ channel }: { channel: string }) {
   if (blocked) {
     return <span className="chip crit" title={blocked.blocked}>blocked · {blocked.blocked!.split('—')[0].trim()}</span>;
   }
-  if (plan.primary?.channel === channel) return <span className="chip go">← change this one</span>;
+  if (plan.thisRun.some((c) => c.channel === channel)) {
+    return <span className="chip go">{plan.thisRun.length > 1 ? '← change this run' : '← change this one'}</span>;
+  }
   if (plan.queued.some((q) => q.channel === channel)) {
-    return <span className="chip hold" title="Valid, but change only one thing per run so the result stays attributable.">queued · not this run</span>;
+    const why = plan.perRun === 'group'
+      ? 'Valid, but this run already changes a lever in the same group, or one aimed at the same symptom. One change per group keeps each result attributable.'
+      : 'Valid, but change only one thing per run so the result stays attributable.';
+    return <span className="chip hold" title={why}>queued · not this run</span>;
   }
   if (plan.status.state !== 'tuning') return <span className="chip hold" title="No symptom is severe enough to chase — this is optional.">optional</span>;
   return null;
@@ -2102,7 +2108,8 @@ function carHasEnteredTune(s: SessionSummary, sessions: SessionSummary[]): boole
 }
 
 // Gather every section's recommendation as a candidate, tagged with the symptom it
-// targets and how severe that symptom is. The planner then picks exactly ONE.
+// targets and how severe that symptom is. The planner then picks one per lever group
+// (or exactly one, in one-change mode) — FH6-30.
 // Median symptom rates over the last few runs. Any one run's rates swing wildly (the
 // trail-brake rate went 4.5 → 0 → 1.7 → 0 with nothing changed), so choosing WHICH
 // symptom to attack from a single run means chasing whichever one happened to spike.
@@ -2252,14 +2259,19 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
     const u = CHANNELS.find((c) => c.key === ch)?.unit ?? '';
     return `${v}${u}`;
   };
+  const n = plan.thisRun.length;
+  const grouped = n > 1;
+  const backfired = plan.lastChanges.filter((r) => r.verdict === 'backfired');
 
   return (
     <Card
       id="next"
       title="Next Change"
-      sub="change ONE thing, then re-run — that's what makes each run measurable"
+      sub={plan.perRun === 'group'
+        ? 'one change per lever group, then re-run — each is read from its own part of the lap'
+        : "change ONE thing, then re-run — that's what makes each run measurable"}
       status={plan.status.state === 'tuning' ? 'warn' : plan.status.state === 'limited' ? 'crit' : 'ok'}
-      statusLabel={plan.status.state === 'tuning' ? '1 change' : plan.status.state === 'limited' ? 'out of levers' : 'dialled in'}
+      statusLabel={plan.status.state === 'tuning' ? `${n} change${n === 1 ? '' : 's'}` : plan.status.state === 'limited' ? 'out of levers' : 'dialled in'}
     >
       {/* Done-ness is judged on car behaviour only — never on lap or track time. */}
       {plan.status.state === 'dialled-in' && (
@@ -2284,34 +2296,9 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
         </div>
       )}
 
-      {/* Verdict on the previous single change, judged on the symptom it targeted —
+      {/* Verdict on each change made before this run, judged on the symptom it targeted —
           lap time alone is too noisy (one lock-up outweighs most tuning gains). */}
-      {plan.lastChange && (() => {
-        const lc = plan.lastChange!;
-        const tone = lc.verdict === 'worked' ? 'info' : lc.verdict === 'backfired' ? 'crit' : 'warn';
-        // Show the move against the metric's own scatter, not a bare percentage. Near a
-        // metric floor a percentage is wildly misleading: 2.5 → 0.0 reads "↓100%" but is
-        // under half a standard deviation when the metric swings ±5.6 run to run.
-        const dir = lc.before != null && lc.after != null ? (lc.after < lc.before ? '↓' : lc.after > lc.before ? '↑' : '') : '';
-        const arrow = lc.changeInSd != null
-          ? `${dir} ${lc.changeInSd.toFixed(2)}× the run-to-run spread`
-          : lc.symptomDeltaPct == null ? null
-            : `${lc.symptomDeltaPct < 0 ? '↓' : '↑'} ${Math.abs(lc.symptomDeltaPct).toFixed(0)}%`;
-        const head = lc.verdict === 'worked' ? 'That change worked'
-          : lc.verdict === 'backfired' ? 'That change backfired'
-            : lc.verdict === 'no-effect' ? 'That change did nothing measurable'
-              : 'That change is inconclusive';
-        return (
-          <div className={`note ${tone}`} style={{ marginBottom: 8 }}>
-            <b>{head} — {CHANNELS.find((c) => c.key === lc.channel)?.label ?? lc.channel} {lc.from} → {lc.to}</b>
-            <div style={{ marginTop: 3, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
-              {lc.metricLabel}: {lc.before != null ? lc.before.toFixed(1) : '–'} → {lc.after != null ? lc.after.toFixed(1) : '–'}
-              {arrow && <b style={{ color: lc.verdict === 'worked' ? 'var(--green)' : lc.verdict === 'backfired' ? 'var(--red)' : 'var(--muted)' }}> {arrow}</b>}
-            </div>
-            <div style={{ marginTop: 3 }}>{lc.advice}</div>
-          </div>
-        );
-      })()}
+      {plan.lastChanges.map((lc) => <LastChangeNote key={lc.channel} lc={lc} />)}
 
       {plan.quality?.messy && (
         <div className="note warn" style={{ marginBottom: 8 }}>
@@ -2323,88 +2310,39 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
         </div>
       )}
 
-      {plan.lastChange?.verdict === 'backfired' && (
-        <div className="note crit">
+      {backfired.map((lc) => (
+        <div key={lc.channel} className="note crit" style={{ marginBottom: 6 }}>
           <b>
-            {CHANNELS.find((c) => c.key === plan.lastChange!.channel)?.label ?? plan.lastChange!.channel}{' '}
-            {plan.lastChange.from} → {plan.lastChange.to} made the car worse.
+            {CHANNELS.find((c) => c.key === lc.channel)?.label ?? lc.channel}{' '}
+            {lc.from} → {lc.to} made the car worse.
           </b>
           <div style={{ marginTop: 4 }}>
-            Clean single-change test: the {plan.lastChange.metricLabel} went from{' '}
-            <b>{plan.lastChange.before?.toFixed(1)}</b> to <b>{plan.lastChange.after?.toFixed(1)}</b>
-            {plan.lastChange.changeInSd != null
-              ? <> ({plan.lastChange.changeInSd.toFixed(2)}× the run-to-run spread)</>
-              : plan.lastChange.symptomDeltaPct != null && <> ({plan.lastChange.symptomDeltaPct > 0 ? '+' : ''}{plan.lastChange.symptomDeltaPct.toFixed(0)}%)</>}.
-            {' '}<b>Put it back to {plan.lastChange.from}</b>
-            {CHANNELS.find((c) => c.key === plan.lastChange!.channel)?.unit ?? ''}. That direction is now marked
+            Measured on the symptom it targeted: the {lc.metricLabel} went from{' '}
+            <b>{lc.before?.toFixed(1)}</b> to <b>{lc.after?.toFixed(1)}</b>
+            {lc.changeInSd != null
+              ? <> ({lc.changeInSd.toFixed(2)}× the run-to-run spread)</>
+              : lc.symptomDeltaPct != null && <> ({lc.symptomDeltaPct > 0 ? '+' : ''}{lc.symptomDeltaPct.toFixed(0)}%)</>}.
+            {' '}<b>Put it back to {lc.from}</b>
+            {CHANNELS.find((c) => c.key === lc.channel)?.unit ?? ''}. That direction is now marked
             proven-wrong for this car and won't be suggested again.
           </div>
         </div>
-      )}
+      ))}
 
       {plan.primary && (
         <>
-          {plan.lastChange?.verdict === 'backfired' && <SectionHead>Then try this next</SectionHead>}
+          {backfired.length > 0 && <SectionHead>Then try {grouped ? 'these' : 'this'} next</SectionHead>}
           {plan.status.state !== 'tuning' && <SectionHead>Optional — only if you want to keep experimenting</SectionHead>}
-          <div className="note warn" style={plan.lastChange?.verdict === 'backfired' ? { marginTop: 6 } : undefined}>
-            <div style={{ fontSize: 13 }}>
-              <b>{plan.primary.label}</b>{' '}
-              {plan.primary.from != null ? (
-                <>
-                  <span style={{ color: 'var(--muted)' }}>{fmtVal(plan.primary.from, plan.primary.channel)} → </span>
-                  <b style={{ color: 'var(--amber)', fontSize: 16 }}>{fmtVal(plan.primary.to, plan.primary.channel)}</b>
-                </>
-              ) : (
-                // No captured value. Under bisection only the DIRECTION is knowable —
-                // printing the old proportional magnitude here ("lower by 12%") was a
-                // leftover that contradicted the bisection instruction directly below it.
-                <b style={{ color: 'var(--amber)', fontSize: 16 }}>
-                  {plan.primary.delta > 0 ? 'RAISE it' : 'LOWER it'}
-                </b>
-              )}
-            </div>
-            <div style={{ marginTop: 4 }}>{plan.primary.why}</div>
-            {plan.primary.from == null && plan.primary.bracket && (
-              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--amber)' }}>
-                {plan.primary.bracket.rationale}
-              </div>
-            )}
-            {plan.primary.from == null && (
-              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--amber)' }}>
-                This channel wasn't captured before the run, so there's no exact target — and if it's already at its
-                in-game limit the report can't tell. <b>Enter it in the pre-run card next time</b> for an exact number.
-              </div>
-            )}
-            {plan.primary.bracket && plan.primary.from != null && (
-              <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)' }}>
-                <b style={{ color: 'var(--text)' }}>Bisection search:</b> {plan.primary.bracket.rationale}
-                {plan.primary.bracket.span != null && (
-                  <> Remaining uncertainty <b>{plan.primary.bracket.lo}–{plan.primary.bracket.hi}</b>
-                    {plan.primary.runsLeft ? <> · about <b>{plan.primary.runsLeft}</b> more run{plan.primary.runsLeft === 1 ? '' : 's'} to pin it down</> : <> · that's as precise as this setting goes</>}.</>
-                )}
-              </div>
-            )}
-            {plan.primary.kind === 'recovery' && (
-              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
-                No symptom is currently above the action threshold — this comes from your own A/B history, which
-                measured the earlier value as better. Optional, but it's the best-evidenced change available.
-              </div>
-            )}
-            {/* Name the symptom THIS lever addresses. Printing plan.dominant here was
-                misleading — the top open candidate isn't always for the worst symptom
-                (its levers may all be exhausted), so it claimed e.g. front downforce
-                was the primary lever for power oversteer. */}
-            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
-              Targeting: <b>{SYMPTOM_LABEL[plan.primary.symptom] ?? plan.primary.symptom}</b>
-              {plan.dominant && plan.dominant !== plan.primary.symptom && (
-                <> — note the worst symptom is <b>{SYMPTOM_LABEL[plan.dominant] ?? plan.dominant}</b>, but its levers are exhausted or already tried.</>
-              )}
-            </div>
-          </div>
+          {plan.thisRun.map((c, i) => (
+            <PlannedChangeNote key={c.channel} c={c} plan={plan} first={i === 0} fmtVal={fmtVal}
+              group={grouped ? GROUP_LABEL[leverGroup(c.channel)] : null} />
+          ))}
           <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>
-            {plan.lastChange?.verdict === 'backfired'
-              ? <><b>Do both: put the failed setting back, then make this one change.</b> That keeps it a clean single-variable test, so the next run is still measurable.</>
-              : <><b>Change only this one thing.</b> Moving several knobs in one run makes the result impossible to attribute — and it's what drove the previous runs to their limits without the car improving.</>}
+            {backfired.length > 0
+              ? <><b>Do both: put the failed setting{backfired.length === 1 ? '' : 's'} back, then make {grouped ? 'these changes' : 'this one change'}.</b> That keeps every change attributable, so the next run is still measurable.</>
+              : grouped
+                ? <><b>Make these {n} changes together — one per lever group.</b> Each is read from its own part of the lap, no two aim at the same symptom, and chassis changes still go one per run, so every result stays attributable. Prefer one at a time? Switch to one change per run on the pre-run card.</>
+                : <><b>Change only this one thing.</b> Moving several knobs in one run makes the result impossible to attribute — and it's what drove the previous runs to their limits without the car improving.</>}
           </div>
         </>
       )}
@@ -2476,9 +2414,101 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
   );
 }
 
-// The planner's verdict for a session. Exported so the pre-run capture screen can offer
-// the ONE change the planner endorses, instead of every section's independent suggestion.
-export function planForSession(s: SessionSummary, sessions: SessionSummary[]): Plan | null {
+
+// One change-verdict note: did the change made before this run move its symptom?
+function LastChangeNote({ lc }: { lc: ChangeReview }) {
+  const tone = lc.verdict === 'worked' ? 'info' : lc.verdict === 'backfired' ? 'crit' : 'warn';
+  // Show the move against the metric's own scatter, not a bare percentage. Near a
+  // metric floor a percentage is wildly misleading: 2.5 → 0.0 reads "↓100%" but is
+  // under half a standard deviation when the metric swings ±5.6 run to run.
+  const dir = lc.before != null && lc.after != null ? (lc.after < lc.before ? '↓' : lc.after > lc.before ? '↑' : '') : '';
+  const arrow = lc.changeInSd != null
+    ? `${dir} ${lc.changeInSd.toFixed(2)}× the run-to-run spread`
+    : lc.symptomDeltaPct == null ? null
+      : `${lc.symptomDeltaPct < 0 ? '↓' : '↑'} ${Math.abs(lc.symptomDeltaPct).toFixed(0)}%`;
+  const head = lc.verdict === 'worked' ? 'That change worked'
+    : lc.verdict === 'backfired' ? 'That change backfired'
+      : lc.verdict === 'no-effect' ? 'That change did nothing measurable'
+        : 'That change is inconclusive';
+  return (
+    <div className={`note ${tone}`} style={{ marginBottom: 8 }}>
+      <b>{head} — {CHANNELS.find((c) => c.key === lc.channel)?.label ?? lc.channel} {lc.from} → {lc.to}</b>
+      <div style={{ marginTop: 3, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+        {lc.metricLabel}: {lc.before != null ? lc.before.toFixed(1) : '–'} → {lc.after != null ? lc.after.toFixed(1) : '–'}
+        {arrow && <b style={{ color: lc.verdict === 'worked' ? 'var(--green)' : lc.verdict === 'backfired' ? 'var(--red)' : 'var(--muted)' }}> {arrow}</b>}
+      </div>
+      <div style={{ marginTop: 3 }}>{lc.advice}</div>
+    </div>
+  );
+}
+
+// One planned change for this run: the target, why, and the search state behind it.
+function PlannedChangeNote({ c, plan, first, group, fmtVal }: {
+  c: PlannedChange; plan: Plan; first: boolean; group: string | null; fmtVal: (v: number | null, ch: string) => string;
+}) {
+  return (
+    <div className="note warn" style={{ marginTop: 6 }}>
+      {group && <div style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{group}</div>}
+      <div style={{ fontSize: 13 }}>
+        <b>{c.label}</b>{' '}
+        {c.from != null ? (
+          <>
+            <span style={{ color: 'var(--muted)' }}>{fmtVal(c.from, c.channel)} → </span>
+            <b style={{ color: 'var(--amber)', fontSize: 16 }}>{fmtVal(c.to, c.channel)}</b>
+          </>
+        ) : (
+          // No captured value. Under bisection only the DIRECTION is knowable —
+          // printing the old proportional magnitude here ("lower by 12%") was a
+          // leftover that contradicted the bisection instruction directly below it.
+          <b style={{ color: 'var(--amber)', fontSize: 16 }}>
+            {c.delta > 0 ? 'RAISE it' : 'LOWER it'}
+          </b>
+        )}
+      </div>
+      <div style={{ marginTop: 4 }}>{c.why}</div>
+      {c.from == null && c.bracket && (
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--amber)' }}>
+          {c.bracket.rationale}
+        </div>
+      )}
+      {c.from == null && (
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--amber)' }}>
+          This channel wasn't captured before the run, so there's no exact target — and if it's already at its
+          in-game limit the report can't tell. <b>Enter it in the pre-run card next time</b> for an exact number.
+        </div>
+      )}
+      {c.bracket && c.from != null && (
+        <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)' }}>
+          <b style={{ color: 'var(--text)' }}>Bisection search:</b> {c.bracket.rationale}
+          {c.bracket.span != null && (
+            <> Remaining uncertainty <b>{c.bracket.lo}–{c.bracket.hi}</b>
+              {c.runsLeft ? <> · about <b>{c.runsLeft}</b> more run{c.runsLeft === 1 ? '' : 's'} to pin it down</> : <> · that's as precise as this setting goes</>}.</>
+          )}
+        </div>
+      )}
+      {c.kind === 'recovery' && (
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
+          No symptom is currently above the action threshold — this comes from your own A/B history, which
+          measured the earlier value as better. Optional, but it's the best-evidenced change available.
+        </div>
+      )}
+      {/* Name the symptom THIS lever addresses. Printing plan.dominant here was
+          misleading — the top open candidate isn't always for the worst symptom
+          (its levers may all be exhausted), so it claimed e.g. front downforce
+          was the primary lever for power oversteer. */}
+      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
+        Targeting: <b>{SYMPTOM_LABEL[c.symptom] ?? c.symptom}</b>
+        {first && plan.dominant && !plan.thisRun.some((x) => x.symptom === plan.dominant) && (
+          <> — note the worst symptom is <b>{SYMPTOM_LABEL[plan.dominant] ?? plan.dominant}</b>, but its levers are exhausted or already tried.</>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The planner's verdict for a session. Exported so the pre-run capture screen offers the
+// changes the planner endorses, instead of every section's independent suggestion.
+export function planForSession(s: SessionSummary, sessions: SessionSummary[], perRun: PerRun = 'group'): Plan | null {
   const a = s.analytics;
   if (!a) return null;
   return buildPlan(
@@ -2492,6 +2522,7 @@ export function planForSession(s: SessionSummary, sessions: SessionSummary[]): P
       pooledDamping(s, sessions),
     ),
     deltaLookup,
+    perRun,
   );
 }
 
@@ -2521,7 +2552,8 @@ function Report({ s }: { s: SessionSummary }) {
   const g = (v: number | null | undefined, d = 2) => (v != null ? fmt(v, d) : '–');
   // Computed once here and shared with every section via PlanCtx, so the whole report
   // reasons from one plan instead of each card deciding independently.
-  const plan = planForSession(s, meta.sessions);
+  const perRun = usePerRun();
+  const plan = planForSession(s, meta.sessions, perRun);
 
   // A run's comparable time: a circuit fastest lap OR — for a point-to-point / sprint
   // (Rivals street races), which never cross start/finish so bestLap stays 0 — the
