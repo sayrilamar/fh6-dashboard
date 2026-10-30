@@ -17,11 +17,15 @@ estimate: null        # not run through /estimate-story
 As the driver, I want the report never to change my tire pressures to chase a
 temperature that pressure can't move.
 
-> **Waits on FH6-27.** The case for this change rests on one measurement:
-> pressure barely moves temperature (2026-08-03). Given how the toe sign went
-> (FH6-17), confirm it on tarmac before changing behaviour. If FH6-27 finds that
-> pressure *does* move temperature on tarmac, rewrite this story around a
-> surface-aware window instead.
+> **Ready (FH6-27 done, 2026-10-30): the premise holds on tarmac and dirt.**
+> Car #634 ran front 26 | 34 | 26 | 34 psi on one road route and on one dirt
+> route.
+> - **Temperature:** the front's last-30-s temperature moved +0.2 °F on tarmac
+>   and −0.03 °F on dirt, both inside the noise.
+> - **Grip:** no grip metric moved, so nothing replaces the temperature rule.
+>   Pressure stays manual.
+> - **Today's rule is wrong on tarmac:** it called the tires cold on every road
+>   run and advised −2 to −2.5 psi front, at both pressures.
 
 ## Investigation (2026-10-29)
 
@@ -64,13 +68,19 @@ which is why it never reaches 140 °F.
   (r ≈ +0.4 with speed, −0.2 to −0.3 with slip). The water crossing comes early
   at lower speed and the tires warm through the faster later sections, so time
   and water confound both correlations.
-- **Not established:** whether 140 °F, or the 175 °F ideal, is wrong on
-  **tarmac**. Dirt with a water crossing can't answer that.
+- **Tarmac (FH6-27, 2026-10-30).** On a road route the same car's fronts
+  averaged about 133 °F, with peaks of 142–179 °F.
+  - The app averages only frames at or above 140 °F (3–17% of the run) and
+    reads 141–146 °F. Against the 175 °F ideal that is "cold, lower
+    pressure" on every run.
+  - Neither 26 nor 34 psi changed it, so no pressure gets there. The Mazda
+    787B was told the same.
 
 **FH6 reports one rear temperature for both wheels** on this car. Rear-left
 equals rear-right in 100% of frames (5,492 / 5,492 and 5,453 / 5,453). The
 parser reads four separate offsets (268 / 272 / 276 / 280), so the duplication
-is in the game's data. It is not yet checked on other cars.
+is in the game's data. FH6-27 found the same on a 1991 Mazda 787B (AWD),
+whose fronts differ by 2.7 °F on average.
 
 **The case against steering pressure by temperature.** On 2026-08-03 (three
 runs, same car and route, surface not recorded), front pressure
@@ -97,15 +107,18 @@ rail.
   (`puddle` > 0) are left out of both. It notes when FH6 reported one rear
   temperature for both wheels.
 - **AC-3** The pressure rows keep working as entry fields with MIN/MAX marks,
-  and show "hold" until a measured signal (FH6-27) drives them.
+  and show "hold". FH6-27 found no grip metric that pressure moves, so no
+  signal drives them.
 - **AC-4** Unit tests cover these, and restoring the temperature rule fails
   them:
   - `tireDeltas` holds pressure for cold, ideal and hot temperatures
   - the planner offers no pressure candidate for tire temperature
   - tire analytics are built for a dirt run peaking at 102.8 °F, with its
     water frames excluded
-- **AC-5** On the 6:09 PM run of 2026-10-29, the Tires card appears with
-  front and rear temperatures, and both pressures read "hold".
+- **AC-5** In the live report, both pressures read "hold" and the Tires card
+  shows front and rear temperatures, on:
+  - the 6:09 PM dirt run of 2026-10-29
+  - the 11:00 AM road run of 2026-10-30, which today advises front −2 psi
 
 ## Notes
 
