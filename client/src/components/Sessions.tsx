@@ -10,6 +10,7 @@ import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } fro
 import type { GearContext } from '../gearing';
 import type { Candidate, Plan } from '../plan';
 import { handlingDeltas } from '../handling';
+import { damperMove } from '../damping';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
 //
@@ -1258,7 +1259,6 @@ function FinalDrive({ s }: { s: SessionSummary }) {
 //    the busier end gets a small stiffen. Bottoming (too-soft bump) shows in Issues.
 interface DampingSettings { frontBump?: number; frontRebound?: number; rearBump?: number; rearRebound?: number }
 
-const DAMP_MIN = 1, DAMP_MAX = 20;
 // Order matches the in-game damper tuning menu: rebound (front, rear) then bump.
 const DAMPING_FIELDS: { key: keyof DampingSettings; label: string; base: number }[] = [
   { key: 'frontRebound', label: 'Front · Rebound', base: 8 },
@@ -1295,8 +1295,7 @@ function dampingTarget(cur: DampingSettings, a: SessionAnalytics, plan?: Plan | 
     const planned = targetFromPlan(plan ?? null, f.key as string);
     if (planned != null) { out[f.key] = planned; continue; }
     const dd = deltas[f.key]; if (!dd) continue;
-    const base = cur[f.key] ?? f.base;
-    out[f.key] = Math.max(DAMP_MIN, Math.min(DAMP_MAX, Math.round(base + dd.d)));
+    out[f.key] = damperMove(cur[f.key] ?? f.base, dd.d).target;
   }
   return out;
 }
@@ -1345,8 +1344,7 @@ function Damping({ s }: { s: SessionSummary }) {
         {DAMPING_FIELDS.map((f) => {
           const base = cur[f.key] ?? f.base;
           const dd = deltas[f.key] || { d: 0, why: '' };
-          const target = plannedTarget(f.key) ?? Math.max(DAMP_MIN, Math.min(DAMP_MAX, Math.round(base + dd.d)));
-          const delta = target - base;
+          const { target, delta } = damperMove(base, dd.d, plannedTarget(f.key));
           const dColor = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
           return (
             <div key={f.key} className="note info" style={{ borderLeftColor: delta === 0 ? 'var(--line)' : dColor }}>
