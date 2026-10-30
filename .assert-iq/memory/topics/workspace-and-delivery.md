@@ -19,9 +19,9 @@ obvious from the code._
 - **Before 2026-10-29 the simulator could not record.** It wrote car ordinal
   `2523123456`, which overflows s32 to a negative number. The recorder only
   arms on `isRaceOn && carOrdinal > 0` (`server/recorder.js:101`), so RECORD
-  sat on "ARMED · waiting for car" forever. It now sends **#999999**. The fix
-  is in the working tree, not yet committed at that day's dream. After the
-  fix, a 49 s sim recording saved and rendered in the Tuning Report.
+  sat on "ARMED · waiting for car" forever. It now sends **#999999**
+  (committed `2fe4ca1`, 2026-10-29). After the fix, a 49 s sim recording saved
+  and rendered in the Tuning Report.
 - **Ordinal 999999 is reserved for synthetic runs.** Tunes
   (`fh6.<section>.c.<ordinal>` in localStorage) and bisection history are
   keyed by car ordinal, so a sim reusing a real car's ordinal would mix fake
@@ -39,15 +39,27 @@ obvious from the code._
 
 ## Test posture (re-checked 2026-10-29)
 
-- **There is no automated test suite and no CI** — no `tests/`, no
-  `.github/workflows/`, no `test` script. Playwright is the *intended* UI
-  framework per `.assert-iq/config.yaml`, but nothing is wired up.
-- Consequence for QI reasoning: the **Protection** and **Trust** layers are
-  genuinely UNGRADED on this repo. Do not synthesize a protection score from
-  absent tests — say the layer cannot be evaluated and continue.
-- The actual oracle is **recorded live runs by the user**: a top-speed run on a
-  long straight, and same-car same-circuit runs alternating A|B|A|B with
-  settings entered by hand (2026-08-29/30), plus browser-preview inspection.
+- **A Vitest unit suite exists since 2026-10-29** (FH6-1, `a1c80c4`).
+  - Tests live in `tests/unit/`. Run them from the repo root with
+    `npm run test:unit`.
+  - 59 tests as of `e97b934`, covering the planner, bisection, handling and
+    toe sign, damper and alignment row math, the capture gate, gearing and the
+    parser.
+- **There is still no CI** (no `.github/workflows/`) and no UI tests.
+  Playwright is the *intended* UI framework per `.assert-iq/config.yaml`, but
+  it is not wired up.
+- **Consequence for QI reasoning:**
+  - **Protection** can be graded for modules the unit suite covers.
+    `Sessions.tsx` rendering is covered only by browser-preview checks.
+  - **Trust** stays UNGRADED, because there is no flake history.
+- The outcome oracle is still **recorded live runs by the user**: a top-speed
+  run on a long straight, and same-car same-circuit runs alternating A|B|A|B
+  with settings entered by hand (2026-08-29/30).
+- **Recordings land in whichever checkout runs the server.** `sessions/` is
+  resolved relative to `server/recorder.js`. On 2026-10-29 the server ran from
+  a Claude worktree, so the day's runs were in
+  `.claude/worktrees/<name>/sessions/`, and the main checkout's `sessions/`
+  was empty.
 
 ## Git and GitHub
 
@@ -55,11 +67,23 @@ obvious from the code._
   default branch `main`, `main` tracks `origin/main`.
 - Committed as `sayrilamar <sayrilamar@gmail.com>` (repo-local git config).
   Auth is the **`gh` CLI** (HTTPS, keyring). There is no SSH key.
-- **Workflow:** work lands straight on `main`, and only when the user says so
-  ("commit and push"); "don't commit yet" means verify first. Confirmed across
-  the 2026-08-29/30 and 2026-10-29 sessions.
-- On 2026-10-29 Claude Code's auto-mode check **blocked the agent's `git push`**
-  to this public repo; the user ran `git push origin main` themselves.
+- **Commit only when the user says so** ("commit and push"). "Don't commit
+  yet" means verify first. Confirmed across the 2026-08-29/30 and 2026-10-29
+  sessions.
+- **Delivery since 2026-10-29:**
+  1. Commit per story on the session branch.
+  2. Open a PR with the `new-pull-request` skill, titled `[FH6-n] …`.
+  3. Fast-forward `main` locally to the PR's commits and push. GitHub then
+     marks the PR merged.
+
+  This was PRs #1–#3. There is no CI, and `main` is unprotected.
+- Early on 2026-10-29, Claude Code's auto-mode check blocked one agent
+  `git push origin main`, and the user pushed by hand. The agent's later
+  branch pushes and fast-forward pushes of `main` that day went through.
+- **Work tracking is markdown stories**: `stories/todo/` and `stories/done/`,
+  IDs `FH6-<n>`, with rules in `stories/README.md`. The user decided this on
+  2026-10-29, since there is no external tracker. Escaped defects are
+  `type: bug` with the label `escape`.
 - `.gitignore` covers `node_modules/`, `client/dist/`, `sessions/`,
   `tsconfig.tsbuildinfo`, `.env*`, `.DS_Store`, and (since 2026-10-29)
   `.claude/settings.local.json`. `sessions/` matters — recorded runs are tens
@@ -87,10 +111,27 @@ obvious from the code._
   Wi-Fi), while other LAN devices resolved fine. The Xbox reported "UPnP not
   successful". Recording had worked on 2026-08-29, so something on the network
   changed. Suspected Wi-Fi client isolation or a second router; unresolved.
+  Packets reached the Mac again on 2026-10-29 (a dozen recordings that day),
+  and the 2026-10-06 cause was never identified.
 - Measure arrival on the server's own socket
   (`nettop -m udp -p <server-pid> -L 1 -J bytes_in`), not the Mac-wide
   `netstat -s -p udp` counter — other UDP traffic gave a false positive
   (2026-10-06).
+
+## iCloud-synced `~/Documents`
+
+The repository lives in iCloud-synced `~/Documents`, which causes two
+problems:
+
+- **Evicted ("dataless") files.** Vite, Vitest, npx and `concurrently` can
+  hang at 0% CPU when `node_modules` files have been evicted. Check with
+  `find node_modules -flags +dataless` before blaming code. This has been
+  seen in more than one session.
+- **Conflict copies named "name 2".** They appear in the tree and inside
+  `.git`. On 2026-10-29 a `refs/heads/main 2` broke `git fetch` with
+  "bad object". Before git work, look for them with
+  `find .git -name '* 2*' -not -path '*/objects/*'`. Move them out; never
+  commit them.
 
 ## Note on this workspace
 

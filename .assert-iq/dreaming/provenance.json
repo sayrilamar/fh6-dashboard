@@ -47,6 +47,52 @@
       },
       "regression": null,
       "memory_changed": true
+    },
+    {
+      "cycle_id": "dream-20261030T014210Z",
+      "status": "aborted",
+      "started_at": "2026-10-30T01:42:10.120016Z",
+      "completed_at": "2026-10-30T01:44:44.014660Z",
+      "maturity_tier": "early",
+      "memory_version_before": "sha256-v2:3eec75359158dd26793a31ce8f94f7328acf477d80b6ba9a707a28ec142882f2",
+      "memory_version_after": "sha256-v2:3eec75359158dd26793a31ce8f94f7328acf477d80b6ba9a707a28ec142882f2",
+      "snapshot": ".assert-iq/dreaming/.snapshots/mem-20261030T014210Z.tar.gz",
+      "sanity": {
+        "clean": true,
+        "topics": 4,
+        "issues": 0,
+        "detail": {
+          "cycles": 0,
+          "stale_topics": 0,
+          "contradictions": 0,
+          "granularity": 0
+        }
+      },
+      "regression": null,
+      "memory_changed": false
+    },
+    {
+      "cycle_id": "dream-20261030T014444Z",
+      "status": "completed",
+      "started_at": "2026-10-30T01:44:44.071135Z",
+      "completed_at": "2026-10-30T01:46:42.847152Z",
+      "maturity_tier": "early",
+      "memory_version_before": "sha256-v2:61fe9f55947b3577254af2a4a7e68072285996d72124b430406fd5316abd0047",
+      "memory_version_after": "sha256-v2:1b39679ed0ae9bd94aa1f41bba3e655e9c62fd8e9e7340b10af365b211498027",
+      "snapshot": ".assert-iq/dreaming/.snapshots/mem-20261030T014444Z.tar.gz",
+      "sanity": {
+        "clean": true,
+        "topics": 4,
+        "issues": 0,
+        "detail": {
+          "cycles": 0,
+          "stale_topics": 0,
+          "contradictions": 0,
+          "granularity": 0
+        }
+      },
+      "regression": null,
+      "memory_changed": true
     }
   ]
 }

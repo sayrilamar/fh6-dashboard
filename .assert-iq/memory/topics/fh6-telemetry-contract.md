@@ -43,11 +43,45 @@ never fired.
 | `distanceTraveled` | **resets** (5950 → 249). The odometer only goes backwards when the event ends — this is the definitive end-of-race marker. |
 | `lapNumber` / `lastLap` | 0 → 1, and `lastLap` fills with the finishing time. |
 
-- The auto-stop arms only once a capture proves it is a race (race clock past
-  5 s, or a grid position). Free-roam recordings are stopped by hand — the
-  user's stated preference (2026-08-30).
+- **The race clock is not a race signal**, measured 2026-10-29. FH6's
+  pre-race screen already reports live gameplay:
+  - `isRaceOn` is true, with the real car (not the `#0` grid placeholder)
+  - the car is parked: speed 0, `racePosition` 0, odometer 0
+  - `currentRaceTime` is running (153 s and 38 s in two runs), and it drops
+    back at the green light
+
+  Arming on "clock past 5 s", and stopping on "clock went backwards", ended
+  every pre-armed recording at the race start.
+- Since FH6-15 (`aa0305b`, 2026-10-29):
+  - An armed capture begins once the car holds a race position or moves
+    (> 0.5 m/s).
+  - Only `racePosition > 0` proves a race.
+  - The odometer reset is the only race-end stop, with a 60 s
+    `isRaceOn`-gone fallback.
+  - Free-roam recordings are stopped by hand, the user's stated preference
+    (2026-08-30).
 - Session duration ends at the last frame where gameplay was running, not when
   stop() was called (menus had inflated one run from 143 s to 447 s).
+
+## Axes and tire slip angles — measured 2026-10-29
+
+Measured on car #634 across 11 race recordings plus one straight-line toe
+test.
+
+- **`accel.x > 0` is a RIGHT turn.**
+  - The left wheels compress more: `normSusp` left minus right is +0.12 front
+    and +0.14 rear.
+  - `steer` is positive (mean +0.16), so positive steer means right.
+- **`slipAngle` is signed per wheel.** All four wheels read positive in right
+  turns (+0.33 to +0.37 mean where |`accel.x`| > 5) and negative in left
+  turns. So a wheel aimed right of its direction of travel reads positive.
+- **Straight-line slip angle at toe 0 is 0.000 ± 0.01** per frame.
+- **Toe shows up as a steady per-wheel offset**, with opposite signs left and
+  right:
+  - toe-in: RL > 0 and RR < 0
+  - toe-out: RL < 0 and RR > 0
+
+  This is how the toe sign was settled. See [[tuning-engine-conventions]].
 
 ## Known gaps in the telemetry itself
 

@@ -7,22 +7,44 @@ once._
 
 ## In-game sign conventions
 
-- **Toe: POSITIVE = toe-IN (stability), NEGATIVE = toe-OUT (turn-in) — front
-  and rear.** Corrected 2026-08-30 (commit `e943fee`), confirmed by two
-  independent sources and the user's own telemetry: across 14 recorded runs,
-  rear toe vs power-oversteer rate correlated **r = −0.67**. So a loose rear
-  wants a POSITIVE change; an understeering front wants a NEGATIVE one.
-- **Do not trust the in-game slider labels for this.** Forza's tuning UI has a
-  known bug with the In/Out labels on the wrong sides. Reading those labels is
-  how the store and the app both recorded the inverted convention on
-  2026-08-28, which then walked rear toe +0.4 → −4.8 against the −5.0 rail
-  while believing it was adding toe-in.
-- Code status (2026-10-29): the advice logic in `handlingDeltas`, the
-  convention comment at `Sessions.tsx:136`, every toe advice string, and the
-  Rear · Toe baseline default (`base: 0.1`, mild toe-in) now all carry the
-  corrected sign. The strings and the default were fixed 2026-10-29 in the
-  working tree, not yet committed at that day's dream. See
-  [[recurring-defects]] § sign regressions.
+- **Toe: NEGATIVE = toe-IN (stability), POSITIVE = toe-OUT (turn-in), front
+  and rear, exactly as FH6's tuning menu labels it.** MEASURED 2026-10-29 from
+  telemetry, not inferred:
+  - The test: front and rear toe set to +1.0, the car driven straight in free
+    roam (car #634, 778 straight-line frames).
+  - The readings: slip angle FL/FR −0.122/+0.121 and RL/RR −0.108/+0.108, with
+    the same signs on every frame. At toe 0 the same car reads 0.000 ± 0.01.
+  - Why that means toe-out: a wheel aimed right of its travel reads positive
+    (see [[fh6-telemetry-contract]] § axes). So +1.0 splays both axles
+    outward.
+
+  So a loose rear wants a NEGATIVE change, and an understeering front wants a
+  POSITIVE one.
+- **History:** the sign flipped on 2026-08-28, on 2026-08-30, and back on
+  2026-10-29.
+  - The 2026-08-30 flip (`e943fee`) came from a 14-run correlation
+    (r = −0.67). Those runs moved up to 15 channels each, so toe's own effect
+    couldn't be isolated. It also rested on a belief that the menu's In/Out
+    labels were swapped. The measurement disproved both.
+  - The 2026-10-29 fix is FH6-17 (`443ab76`, merged via PR #3). It covers the
+    `handlingDeltas` logic, the `Sessions.tsx` help strings and convention
+    comment, and the Rear · Toe baseline (`-0.1`, mild toe-in), and
+    `tests/unit/handling.test.ts` pins it.
+  - **Change the sign only with a measurement like the one above.** See
+    [[recurring-defects]] § sign regressions.
+
+## Setting resolution
+
+- FH6's alignment (toe, camber, caster), ARB and damper settings move in
+  **0.1 steps**. A confirmed tune on 2026-10-29 read ARB 34.3 / 35.3, rebound
+  8.7 / 10, and bump 5.4 / 7.2.
+- A target must keep those tenths. A row that says "hold" must return the
+  driver's entered value untouched. Fixed for the damper rows by FH6-18
+  (`damperMove()`) and for the alignment/ARB/spring rows by FH6-19
+  (`handlingMove()`), 2026-10-29. See [[recurring-defects]] § rounding.
+- Open question (2026-10-29, FH6-16): should a consistent but tiny move near
+  a metric's floor count as "backfired"? Rear rebound 11.6 → 10 moved its
+  balance error 0.03 → 0.06 and now blocks softening. Undecided.
 
 ## What counts as a tuning signal
 
@@ -46,8 +68,8 @@ once._
   `experiments()` only mines a pair of runs when **exactly one** channel moved,
   and backfire detection (`reviewChange()` → `decorate()`) only works on mined
   pairs. The pre-run screen once bypassed the planner with "Apply all
-  recommended" and moved 7–15 channels per run, which is how the inverted toe
-  marched to its rail unchecked (fixed 2026-08-30, `e943fee`).
+  recommended" and moved 7–15 channels per run, which is how rear toe marched
+  to −4.8 against its rail unchecked (fixed 2026-08-30, `e943fee`).
 - User requirement (2026-08-30): the pre-run "Confirm & Record" screen must not
   depend on the user opening the Tuning Report first.
 
