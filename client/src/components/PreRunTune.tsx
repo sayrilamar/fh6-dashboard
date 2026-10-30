@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getLatest, useMeta, useTick } from '../store';
 import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
-import { solveGearing, finalDriveAdvice, contextFromAnalytics } from '../gearing';
+import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing';
 import { planForSession } from './Sessions';
 import type { TuneSnapshot, TuneLimits } from '../types';
 
@@ -129,34 +129,10 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     const sol = solveGearing(ratios, numGears, contextFromAnalytics(a));
     if (sol) for (let n = 1; n <= numGears; n++) if (sol.ratios[n] != null) out[`gear${n}`] = sol.ratios[n];
 
-    // FINAL DRIVE IS SOLVED RELATIVE TO THE RUN, NOT TO THE FORM.
-    //
-    // solveFinalDrive returns a SCALE, and that scale is only meaningful against the
-    // final drive that was on the car for the run being analysed — the same run whose
-    // power band and speed-per-rpm mapping the solve is built on. Scaling whatever
-    // happens to be typed in the box made the recommendation chase itself: applying it
-    // rewrote the input, the memo recomputed off the new input, and the target moved
-    // again. Every click bumped the number and the "rec" chip never cleared, because
-    // the suggestion could never equal the field it was derived from.
-    //
-    // The ratios come from the run for the same reason: the speed-per-rpm mapping is
-    // calibrated on the recorded box's top gear, so pairing it with edited ratios would
-    // silently mis-map rpm to road speed.
-    const runTune = lastGearing?.meta?.tune;
-    const runFd = runTune?.finalDrive;
-    const runRatios: Record<number, number> = {};
-    for (let n = 1; n <= 10; n++) {
-      const v = runTune?.[`gear${n}`];
-      if (typeof v === 'number' && v > 0) runRatios[n] = v;
-    }
-    const adv = finalDriveAdvice(
-      a.gearing.finalDrive,
-      Object.keys(runRatios).length >= 2 ? runRatios : ratios,
-      contextFromAnalytics(a),
-    );
-    if (typeof runFd === 'number' && runFd > 0 && adv.pct !== 0) {
-      out.finalDrive = Math.round(runFd * adv.scale * 100) / 100;
-    }
+    // Final drive is solved relative to the recorded run, never the form (see
+    // finalDriveTarget in gearing.ts for why).
+    const fd = finalDriveTarget(lastGearing?.meta?.tune, a, ratios);
+    if (fd != null) out.finalDrive = fd;
     return out;
   }, [lastGearing, numGears, vals]);
 

@@ -448,3 +448,44 @@ export function finalDriveAdvice(
   const a = finalDriveAdviceByRpm(fd);
   return { ...a, solved: false, gainPct: null, scale: 1 + a.pct / 100, fromMph: null, toMph: null };
 }
+
+// qi-trace: work-item="FH6-4" acceptance-criteria="AC-1, AC-2" risk-tier="medium" test-coverage="TODO(qi-trace): FH6-5 adds the tests"
+// The pre-run screen's final-drive target: the recorded run's final drive times the
+// solved scale, rounded to 2 decimals, or null when there is nothing to change.
+//
+// FINAL DRIVE IS SOLVED RELATIVE TO THE RUN, NOT TO THE FORM.
+//
+// solveFinalDrive returns a SCALE, and that scale is only meaningful against the
+// final drive that was on the car for the run being analysed — the same run whose
+// power band and speed-per-rpm mapping the solve is built on. Scaling whatever
+// happens to be typed in the box made the recommendation chase itself: applying it
+// rewrote the input, the memo recomputed off the new input, and the target moved
+// again. Every click bumped the number and the "rec" chip never cleared, because
+// the suggestion could never equal the field it was derived from.
+//
+// The ratios come from the run for the same reason: the speed-per-rpm mapping is
+// calibrated on the recorded box's top gear, so pairing it with edited ratios would
+// silently mis-map rpm to road speed. `fallbackRatios` (the form's gears) are used only
+// when the run recorded fewer than two. No final-drive value from the form is an input.
+export function finalDriveTarget(
+  runTune: Record<string, number> | null | undefined,
+  analytics: Parameters<typeof contextFromAnalytics>[0] & { gearing?: { finalDrive?: FinalDriveStats | null } | null },
+  fallbackRatios: GearRatios,
+): number | null {
+  if (!analytics?.gearing) return null;
+  const runFd = runTune?.finalDrive;
+  const runRatios: GearRatios = {};
+  for (let n = 1; n <= 10; n++) {
+    const v = runTune?.[`gear${n}`];
+    if (typeof v === 'number' && v > 0) runRatios[n] = v;
+  }
+  const adv = finalDriveAdvice(
+    analytics.gearing.finalDrive,
+    Object.keys(runRatios).length >= 2 ? runRatios : fallbackRatios,
+    contextFromAnalytics(analytics),
+  );
+  if (typeof runFd === 'number' && runFd > 0 && adv.pct !== 0) {
+    return Math.round(runFd * adv.scale * 100) / 100;
+  }
+  return null;
+}

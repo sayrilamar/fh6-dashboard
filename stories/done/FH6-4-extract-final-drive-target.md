@@ -6,8 +6,8 @@ labels: [refactor, testability, gearing]
 modules: [client/src/components/PreRunTune.tsx, client/src/gearing.ts]
 depends_on: []
 created: 2026-10-29
-started: null
-completed: null
+started: 2026-10-29
+completed: 2026-10-29
 points: null
 estimate:
   id: ed7a1327-e6e0-4bbe-8f4a-277d2fa4f2d2
@@ -54,3 +54,40 @@ two-file edit to existing code, which also overlaps the very fix it protects.
 | Outcome | WEAK | Pre-run screen escapes: the final-drive loop, the 41 % vs 75 % brake-balance mismatch, and the planner bypass. |
 
 Team fit: dev. Bus factor: one deep slot on `client/src/components`.
+
+## Done (2026-10-29)
+
+- **New `finalDriveTarget(runTune, analytics, fallbackRatios)` in
+  `client/src/gearing.ts`** (AC-1). It returns the recorded run's final drive
+  times the solved scale, rounded to 2 decimals, or `null`. Its inputs are the
+  run's tune, the analytics and the form's gears as fallback ratios. No form
+  value for the final drive is an input (AC-2).
+- **`PreRunTune.tsx`** (AC-3): the block is replaced by the call. The
+  explanatory comment ("FINAL DRIVE IS SOLVED RELATIVE TO THE RUN, NOT TO THE
+  FORM") moved with the code, and a two-line pointer remains. The import now
+  takes `finalDriveTarget` instead of `finalDriveAdvice`.
+- **Build:** `npm --prefix client run build` passes (AC-4). The unit suite is
+  still 59/59.
+- **Equivalence check:** a temporary test, deleted afterwards, ran the old
+  inline block and the new function side by side. It covered all 12 recorded
+  runs on 2026-10-29, each with five variants: as recorded, no final drive,
+  one gear, no tune, and an empty form. All 60 comparisons matched, and 27 of
+  them produce a target. The 6:09 PM run still gets 2.44.
+- **Traceability:** `finalDriveTarget` carries a `qi-trace` marker for FH6-4
+  with `test-coverage="TODO(qi-trace): FH6-5 adds the tests"`. FH6-5 should
+  replace that with its test file path.
+
+### Scope notes
+
+- **Parallel path, not changed** (AC-3 limits the diff to `PreRunTune`). The
+  Tuning Report's `FinalDrive` section in `Sessions.tsx` computes its own
+  target. When the run has no recorded final drive, it scales the box's value
+  (`cur * adv.scale`). That value can be the auto-written `.c.` recommendation
+  from an earlier render, which is the same chase-your-own-output shape that
+  `5cf8628` fixed here. Calling `finalDriveTarget` from the report would remove
+  the second copy; candidate follow-up.
+- **Unrelated files left uncommitted.** At 2026-10-30T02:15Z an Assert.IQ
+  bootstrap from `~/assert-iq-agent-pack` (branch
+  `dreaming-runtime-local-only`, `e93c955`) rewrote
+  `.assert-iq/.install-manifest.json` and `.github/skills/dream/SKILL.md` in
+  this worktree. They are not part of this story.
