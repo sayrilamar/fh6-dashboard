@@ -2,7 +2,8 @@
 // Report derives from a run's measured balance.
 //
 // Lives outside Sessions.tsx so it can be unit-tested without React or the store. The
-// toe sign here has shipped inverted three times; tests/unit/handling.test.ts pins it.
+// toe sign here has flipped back and forth on reasoning alone; it is now taken from a
+// telemetry measurement (FH6-17) and tests/unit/handling.test.ts pins it.
 
 import type { SessionAnalytics } from './types';
 
@@ -15,6 +16,7 @@ import type { SessionAnalytics } from './types';
 // rear-slide RATES (slideCausePer1k) + brakeStability, and UNDERSTEER from `overall` +
 // the understeer-frame rate. Oversteer has real magnitude (rate-scaled → converges);
 // understeer is only coarsely captured, so its nudges are near-categorical.
+// qi-trace: work-item="FH6-17" acceptance-criteria="AC-1, AC-2" risk-tier="high" test-coverage="tests/unit/handling.test.ts"
 export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
   const h = a.handling;
   const o: Record<string, { d: number; why: string }> = {};
@@ -44,24 +46,28 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
   const usSev = sev((usRate - 1) / 4);
   const causeTxt = `${p.trailBrake}/${p.power}/${p.grip} per-1k brake/power/grip`;
 
-  // TOE SIGN. In Forza the value convention is: POSITIVE = toe-IN (stability),
-  // NEGATIVE = toe-OUT (turn-in). Both toe channels used to be advised with the signs
-  // the other way round, and the likely reason is that Forza's own tuning UI has a
-  // long-standing bug where the "In"/"Out" labels are drawn on the wrong sides of the
-  // slider — read off the screen, the convention looks reversed.
+  // TOE SIGN (FH6, MEASURED): NEGATIVE = toe-IN (stability), POSITIVE = toe-OUT
+  // (turn-in), on both axles. The tuning menu's In/Out labels are correct.
   //
-  // It was not a cosmetic error. Chasing a loose rear, the report walked rear toe from
-  // +0.4 to -4.8 against a -5.0 rail over 14 recorded runs, believing it was adding
-  // toe-IN to settle the car. Measured across those runs the power-oversteer rate ran
-  // 3.3 -> 57.5 per 1k cornering frames and slide events 78 -> ~300, correlation between
-  // rear toe and oversteer rate -0.67: every step "toward stability" made the rear
-  // looser. Front toe carried the same inversion and is corrected with it.
+  // A toed wheel rolling straight carries a steady slip angle, so telemetry shows which
+  // way each wheel points. Right turns read positive on all four wheels (the left side
+  // compresses more there), so a wheel aimed right of its travel reads positive. With
+  // front and rear toe set to +1.0 and the car driven straight (2026-10-29, car #634,
+  // 778 frames), FL/FR read −0.122/+0.121 and RL/RR −0.108/+0.108 on every frame, against
+  // 0.000 ± 0.01 at toe 0. The left wheels point left and the right wheels right: +1.0
+  // splays both axles outward, which is toe-OUT.
   //
-  // Understeer wants front toe-OUT => NEGATIVE. A loose rear wants toe-IN => POSITIVE.
-  o.frontToe = usSev > 0.05 ? { d: -r1(0.1 + 0.1 * usSev), why: 'understeers — more front toe-OUT (toward −) sharpens turn-in' }
+  // From 2026-08-30 this code assumed the reverse, on a 14-run correlation (r = −0.67)
+  // from runs that moved up to 15 channels at once, plus a belief that the menu's labels
+  // were drawn on the wrong sides. So it advised toe-OUT for a loose rear, which loosens
+  // it, and toe-IN for understeer, which adds push. Never change this sign again without
+  // a measurement like the one above.
+  //
+  // Understeer wants front toe-OUT => POSITIVE. A loose rear wants toe-IN => NEGATIVE.
+  o.frontToe = usSev > 0.05 ? { d: r1(0.1 + 0.1 * usSev), why: 'understeers — more front toe-OUT (toward +) sharpens turn-in' }
     : { d: 0, why: 'turn-in settled — hold' };
-  o.rearToe = rearOS > 0.05 || rearLoose ? { d: r1(0.1 + 0.1 * Math.max(rearOS, rearLoose ? 0.4 : 0)), why: `rear slides (${causeTxt}) — more rear toe-IN (toward +) steadies it` }
-    : usSev > 0.6 ? { d: -0.1, why: 'strong persistent push — trim rear toe-in (toward −) to free rotation' }
+  o.rearToe = rearOS > 0.05 || rearLoose ? { d: -r1(0.1 + 0.1 * Math.max(rearOS, rearLoose ? 0.4 : 0)), why: `rear slides (${causeTxt}) — more rear toe-IN (toward −) steadies it` }
+    : usSev > 0.6 ? { d: 0.1, why: 'strong persistent push — trim rear toe-in (toward +) to free rotation' }
       : { d: 0, why: 'rear stable — hold' };
   // Front camber — mid-corner front grip.
   o.frontCamber = usSev > 0.05 ? { d: -r1(0.1 + 0.2 * usSev), why: 'front washes out — add negative front camber for grip at lean' }

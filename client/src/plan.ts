@@ -407,8 +407,8 @@ function unresponsive(channel: string, s: SessionSummary, sessions: SessionSumma
   // Moving it the opposite way and seeing no improvement says nothing about the lever —
   // it is evidence about the other direction. Without this check a channel stays blocked
   // on history gathered while it was being pushed the wrong way, which is exactly what
-  // happened when the rear-toe sign was corrected: 14 runs of it marching toward toe-OUT
-  // had "proven" the lever useless, so the corrected toe-IN advice was never offered.
+  // happened when the rear-toe sign was flipped: 14 runs of it marching toward −4.8 had
+  // "proven" the lever useless, so advice in the other direction was never offered.
   const netMove = xs[xs.length - 1] - xs[0];
   if (Math.abs(netMove) > 1e-9 && d1 !== 0 && Math.sign(netMove) !== Math.sign(d1)) return false;
   return Math.abs(d1) >= Math.abs(d0) * 0.75; // ask never shrank by even 25%

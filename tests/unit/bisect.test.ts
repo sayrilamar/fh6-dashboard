@@ -1,5 +1,5 @@
-// qi-trace work-item: FH6-1
-// qi-trace acceptance-criteria: AC-2, AC-6
+// qi-trace work-item: FH6-1, FH6-17
+// qi-trace acceptance-criteria: FH6-1 AC-2, AC-6; FH6-17 AC-4
 // qi-layer: protection-strength
 // qi-generated-by: assert-iq
 // qi-review-required: true
@@ -44,7 +44,16 @@ describe('bisection guards', () => {
     // Uncapped this is the midpoint of [2.7, 5.0], about 3.9: the +1.2 jump that walked
     // rear toe toward the rail.
     expect(b.next!, 'move capped at 3 × 0.2 = 0.6').toBeCloseTo(3.3, 6);
-    expect(b.rationale).toContain('Capped');
+    expect(b.rationale).toContain('Capped to 0.6 this run');
+  });
+
+  it('prints the cap as a clean number (rear toe −0.1 from 0, as on 2026-10-29)', () => {
+    // 3 × 0.1 is 0.30000000000000004 in floating point; the report printed it raw.
+    const s = session('run-0', 1, { rearToe: 0 });
+    const b = bracketFor('rearToe', 0, -0.1, s, [s], () => -0.1);
+    expect(b.next!, 'toe-in (negative), capped at 3 × 0.1').toBeCloseTo(-0.3, 6);
+    expect(b.rationale).toContain('Capped to 0.3 this run');
+    expect(b.rationale).not.toMatch(/\d\.\d{6,}/);
   });
 
   it('lets the cap override the formula\'s first jump when the advised step is small', () => {
