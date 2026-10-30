@@ -112,9 +112,10 @@ Team fit: dev, plus QA (no QA slot). Bus factor: one deep slot on
   (hold). The heights are now amber and front downforce blue. The spring rows
   are still "hold" at 359.9 / 427, and the page shows no float noise.
 
-### Still open
+### Resolved by FH6-25
 
-- The refinement question in Notes is unchanged: front downforce still shows
-  138 while blocked at the 120 maximum. Decide whether a blocked row should
-  show a target past its marked limit.
+- **The refinement question in Notes was decided on 2026-10-29:** "whatever is
+  set as maximum should be the threshold; the same for minimum". It applies to
+  every setting, not just these rows, so it was logged as FH6-25. Front
+  downforce now shows 120 / hold beside the "maximum (120)" chip.
 

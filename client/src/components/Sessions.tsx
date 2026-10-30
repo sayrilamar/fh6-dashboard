@@ -12,6 +12,8 @@ import type { Candidate, Plan } from '../plan';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
 import { damperMove } from '../damping';
+import { clampToLimit, markedLimit } from '../limits';
+import type { LimitOf } from '../limits';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
 //
@@ -27,6 +29,10 @@ const PlanCtx = createContext<Plan | null>(null);
 
 // Plain function (not a hook) so it can be called inside .map() callbacks.
 const KNOWN_CHANNELS = new Set(CHANNELS.map((c) => c.key));
+
+// The driver's MIN/MAX marks for a run, each at the value it was marked on (the confirmed
+// tune). A marked value is a hard threshold for every target below (FH6-25).
+const limitOf = (s: SessionSummary): LimitOf => (key) => markedLimit(s.meta?.limits, s.meta?.tune, key);
 
 function targetFromPlan(plan: Plan | null, channel: string): number | null {
   // A misspelled channel returns null forever and silently falls back to the
@@ -150,14 +156,14 @@ const HANDLING_FIELDS: { key: keyof HandlingSettings; label: string; base: numbe
 // the row said "rear spring 493" while the popup still offered the proportional 470. Each now
 // takes the plan and prefers `targetFromPlan()`, falling back to the proportional value only
 // for channels the planner has no candidate for.
-function handlingTarget(cur: HandlingSettings, a: SessionAnalytics, plan?: Plan | null): HandlingSettings {
+function handlingTarget(cur: HandlingSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): HandlingSettings {
   const deltas = handlingDeltas(a);
   const out: HandlingSettings = { ...cur };
   for (const f of HANDLING_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const { target } = handlingMove(f, cur[f.key], dd.d, null);
+    const { target } = handlingMove(f, cur[f.key], dd.d, null, lim?.(f.key));
     if (target != null) out[f.key] = target; // a % change needs the current spring rate
   }
   return out;
@@ -172,7 +178,7 @@ function Handling({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.handling) return;
-    try { localStorage.setItem(`fh6.align.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(handlingTarget(cur, s.analytics, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.align.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(handlingTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!h) return null;
   const deltas = adaptDeltas(handlingDeltas(s.analytics!), s, meta.sessions, handlingDeltas);
@@ -258,7 +264,7 @@ function Handling({ s }: { s: SessionSummary }) {
           const curV = cur[f.key];
           // The planner's bisection target wins, so this row can't print a different number
           // from the Next Change card; the label and colour describe the move to it.
-          const { target, label: deltaLabel, held, dir } = handlingMove(f, curV, dd.d, plannedTarget(f.key));
+          const { target, label: deltaLabel, held, dir } = handlingMove(f, curV, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
           const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           const showTarget = f.mode === 'pct' ? (curV != null ? `${target}` : '—') : `${target}${f.unit ?? ''}`;
           return (
@@ -404,15 +410,15 @@ function inheritSettings<T extends object>(
 }
 
 // Diff target = current + measured delta per channel, clamped.
-function diffTarget(cur: DiffSettings, a: SessionAnalytics, fields: { key: keyof DiffSettings; base: number }[], plan?: Plan | null): DiffSettings {
+function diffTarget(cur: DiffSettings, a: SessionAnalytics, fields: { key: keyof DiffSettings; base: number }[], plan?: Plan | null, lim?: LimitOf): DiffSettings {
   const deltas = diffDeltas(a);
   const out: DiffSettings = { ...cur };
   for (const f of fields) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd) continue;
     const base = cur[f.key] ?? f.base;
-    out[f.key] = Math.max(0, Math.min(100, Math.round(base + dd.d)));
+    out[f.key] = clampToLimit(Math.max(0, Math.min(100, Math.round(base + dd.d))), lim?.(f.key));
   }
   return out;
 }
@@ -428,7 +434,7 @@ function DiffRecommendation({ s }: { s: SessionSummary }) {
   // with no prior session in the list still inherits the target, not the entry.
   useEffect(() => {
     if (!s.analytics || !fields) return;
-    try { localStorage.setItem(`fh6.diff.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(diffTarget(cur, s.analytics, fields, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.diff.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(diffTarget(cur, s.analytics, fields, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, fields, plan]);
   if (!s.analytics || !fields) return null;
   const deltas = adaptDeltas(diffDeltas(s.analytics), s, meta.sessions, diffDeltas);
@@ -457,7 +463,7 @@ function DiffRecommendation({ s }: { s: SessionSummary }) {
         {fields.map((f) => {
           const base = cur[f.key] ?? f.base;
           const dd = deltas[f.key] || { d: 0, why: '', gain: null as Gain | null, naive: 0 };
-          const target = plannedTarget(f.key) ?? Math.max(0, Math.min(100, Math.round(base + dd.d)));
+          const target = clampToLimit(plannedTarget(f.key) ?? Math.max(0, Math.min(100, Math.round(base + dd.d))), limitOf(s)(f.key));
           const delta = target - base;
           const dColor = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
           return (
@@ -620,17 +626,17 @@ function brakeAdvice(a: SessionAnalytics) {
 
 const brakeBalBase = (dt: string) => (dt === 'FWD' ? 66 : dt === 'AWD' ? 60 : 58);
 
-function brakeTarget(cur: BrakeInputs, a: SessionAnalytics, dt: string, plan?: Plan | null): BrakeInputs {
+function brakeTarget(cur: BrakeInputs, a: SessionAnalytics, dt: string, plan?: Plan | null, lim?: LimitOf): BrakeInputs {
   const adv = brakeAdvice(a);
   if (!adv) return cur;
   return {
     // Channel keys are 'balance'/'pressure' — matching CHANNELS in tune.ts and the
     // playbook in plan.ts. Naming these 'brakeBalance'/'brakePressure' here silently
     // missed the plan on every lookup and fell through to the proportional value.
-    balance: targetFromPlan(plan ?? null, 'balance')
-      ?? Math.max(0, Math.min(100, Math.round((cur.balance ?? brakeBalBase(dt)) + adv.bal.d))),
-    pressure: targetFromPlan(plan ?? null, 'pressure')
-      ?? Math.max(50, Math.min(200, Math.round((cur.pressure ?? 100) + adv.press.d))),
+    balance: clampToLimit(targetFromPlan(plan ?? null, 'balance')
+      ?? Math.max(0, Math.min(100, Math.round((cur.balance ?? brakeBalBase(dt)) + adv.bal.d))), lim?.('balance')),
+    pressure: clampToLimit(targetFromPlan(plan ?? null, 'pressure')
+      ?? Math.max(50, Math.min(200, Math.round((cur.pressure ?? 100) + adv.press.d))), lim?.('pressure')),
   };
 }
 
@@ -645,7 +651,7 @@ function BrakeRec({ s }: { s: SessionSummary }) {
   // Persist this run's recommendation as the per-car fallback (see DiffRecommendation).
   useEffect(() => {
     if (!a) return;
-    try { localStorage.setItem(`fh6.brake.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(brakeTarget(inp, a, dt, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.brake.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(brakeTarget(inp, a, dt, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [inp, a, dt, s, plan]);
   if (!a) return null;
   const adv = brakeAdvice(a);
@@ -683,7 +689,7 @@ function BrakeRec({ s }: { s: SessionSummary }) {
       <div className="notes" style={{ marginTop: 6 }}>
         {rows.map((row) => {
           const base = inp[row.k] ?? row.base;
-          const target = plannedTarget(row.k) ?? Math.max(row.lo, Math.min(row.hi, Math.round(base + row.dd.d)));
+          const target = clampToLimit(plannedTarget(row.k) ?? Math.max(row.lo, Math.min(row.hi, Math.round(base + row.dd.d))), limitOf(s)(row.k));
           const delta = target - base;
           const c = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
           return (
@@ -869,6 +875,9 @@ function LaunchGear({ s }: { s: SessionSummary }) {
 // RPM landings weight every gear equally, but you spend a blink in 2nd and most of the
 // straight in top, so the steps have to tighten where the time actually goes.
 type GearRatioInputs = Record<number, number>; // gear number → current ratio
+// Hold each ratio to its gear's MIN/MAX mark (FH6-25).
+const clampRatios = (r: GearRatioInputs, lim: LimitOf): GearRatioInputs =>
+  Object.fromEntries(Object.entries(r).map(([n, v]) => [n, clampToLimit(v, lim(`gear${n}`))]));
 
 // Pull the ratios out of the pre-run tune snapshot, translating `gear1`…`gearN` into the
 // numeric keys this section uses. The confirmed tune is ground truth — it is what was
@@ -940,7 +949,8 @@ function GearRatios({ s }: { s: SessionSummary }) {
   useEffect(() => {
     if (!s.analytics || Object.keys(ratios).length === 0) return;
     const key = `fh6.gears.c.${s.meta?.carOrdinal ?? 'unknown'}`;
-    const t = solvedSet(ratios, numGears, s.analytics)?.ratios ?? null;
+    const solvedRatios = solvedSet(ratios, numGears, s.analytics)?.ratios;
+    const t = solvedRatios ? clampRatios(solvedRatios, limitOf(s)) : null;
     try {
       if (t) localStorage.setItem(key, JSON.stringify(t));
       else localStorage.removeItem(key);
@@ -962,7 +972,7 @@ function GearRatios({ s }: { s: SessionSummary }) {
 
   const gearList = Array.from({ length: numGears }, (_, i) => i + 1);
   const sol = solvedSet(ratios, numGears, s.analytics!);
-  const target = sol?.ratios ?? null;
+  const target = sol ? clampRatios(sol.ratios, limitOf(s)) : null;
   const first = ratios[1], top = ratios[numGears];
   const anchorsSet = target != null;
   // Bog line = PEAK TORQUE rpm: below it the engine labors (a real bog). Landing
@@ -1168,10 +1178,14 @@ function FinalDrive({ s }: { s: SessionSummary }) {
     ? (runFd != null ? Math.round(runFd * adv.scale * 100) / 100
       : cur != null ? Math.round(cur * adv.scale * 100) / 100 : null)
     : cur;
+  // A final drive marked at its MIN/MAX holds there (FH6-25).
+  const fdLimit = limitOf(s)('finalDrive');
+  const limitedTarget = clampToLimit(solvedTarget, fdLimit);
+  const atMark = pct !== 0 && solvedTarget != null && limitedTarget !== solvedTarget;
   useEffect(() => {
-    if (!fd || solvedTarget == null) return;
-    try { localStorage.setItem(cKey, String(solvedTarget)); } catch { /* ignore */ }
-  }, [s, fd, cKey, solvedTarget]);
+    if (!fd || limitedTarget == null) return;
+    try { localStorage.setItem(cKey, String(limitedTarget)); } catch { /* ignore */ }
+  }, [s, fd, cKey, limitedTarget]);
   if (!fd) return null;
 
   const setCur = (v: string) => {
@@ -1179,8 +1193,11 @@ function FinalDrive({ s }: { s: SessionSummary }) {
     setCurState(n);
     try { if (n == null) localStorage.removeItem(sKey); else localStorage.setItem(sKey, String(n)); } catch { /* ignore */ }
   };
-  const held = pct === 0;
-  const target = !held ? solvedTarget : cur;
+  const held = pct === 0 || atMark;
+  const target = !held ? limitedTarget : cur;
+  const whyText = atMark && fdLimit
+    ? `${why} You've marked the final drive at its ${fdLimit.which === 'max' ? 'maximum' : 'minimum'} (${fdLimit.at}), so it holds there.`
+    : why;
   const dColor = held ? 'var(--muted)' : 'var(--blue)';
 
   return (
@@ -1197,7 +1214,7 @@ function FinalDrive({ s }: { s: SessionSummary }) {
       </div>
       <div className={`note ${held ? 'info' : 'warn'}`} style={{ marginTop: 6, borderLeftColor: held ? 'var(--line)' : dColor }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
-          <b>Final drive{dir !== 'hold' ? ` — ${dir === 'shorter' ? 'shorten (raise number)' : 'lengthen (lower number)'}` : ''}</b>
+          <b>Final drive{!held && dir !== 'hold' ? ` — ${dir === 'shorter' ? 'shorten (raise number)' : 'lengthen (lower number)'}` : ''}</b>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontVariantNumeric: 'tabular-nums' }}>
             <input
               className="car-input" style={{ width: 78, textAlign: 'right' }} type="number" step="0.01"
@@ -1207,7 +1224,7 @@ function FinalDrive({ s }: { s: SessionSummary }) {
             {held && <span style={{ color: 'var(--muted)', fontSize: 11 }}>hold</span>}
           </span>
         </div>
-        <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{why}</div>
+        <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{whyText}</div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
         Aim to hit redline in top gear right where you brake for the end of the longest straight. Shorter (higher number) = more acceleration everywhere but lower top speed; longer (lower number) = the reverse. It doesn't change your gear spacing.
@@ -1255,14 +1272,14 @@ function dampingDeltas(a: SessionAnalytics, pooled?: SessionAnalytics['damping']
   return o;
 }
 
-function dampingTarget(cur: DampingSettings, a: SessionAnalytics, plan?: Plan | null): DampingSettings {
+function dampingTarget(cur: DampingSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): DampingSettings {
   const deltas = dampingDeltas(a);
   const out: DampingSettings = { ...cur };
   for (const f of DAMPING_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd) continue;
-    out[f.key] = damperMove(cur[f.key] ?? f.base, dd.d).target;
+    out[f.key] = damperMove(cur[f.key] ?? f.base, dd.d, null, lim?.(f.key)).target;
   }
   return out;
 }
@@ -1275,7 +1292,7 @@ function Damping({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.damping) return;
-    try { localStorage.setItem(`fh6.damp.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(dampingTarget(cur, s.analytics, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.damp.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(dampingTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!d) return null;
   const pooled = pooledDamping(s, meta.sessions);
@@ -1311,7 +1328,7 @@ function Damping({ s }: { s: SessionSummary }) {
         {DAMPING_FIELDS.map((f) => {
           const base = cur[f.key] ?? f.base;
           const dd = deltas[f.key] || { d: 0, why: '' };
-          const { target, delta } = damperMove(base, dd.d, plannedTarget(f.key));
+          const { target, delta } = damperMove(base, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
           const dColor = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
           return (
             <div key={f.key} className="note info" style={{ borderLeftColor: delta === 0 ? 'var(--line)' : dColor }}>
@@ -1454,14 +1471,14 @@ function rideHeightDeltas(a: SessionAnalytics, pooled?: SessionAnalytics['rideHe
   return o;
 }
 
-function rideHeightTarget(cur: RideHeightSettings, a: SessionAnalytics, plan?: Plan | null): RideHeightSettings {
+function rideHeightTarget(cur: RideHeightSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): RideHeightSettings {
   const deltas = rideHeightDeltas(a);
   const out: RideHeightSettings = { ...cur };
   for (const f of RIDE_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const { target } = handlingMove(RIDE_MOVE, cur[f.key], dd.d, null);
+    const { target } = handlingMove(RIDE_MOVE, cur[f.key], dd.d, null, lim?.(f.key));
     if (target != null) out[f.key] = target; // % change needs your current height
   }
   return out;
@@ -1476,7 +1493,7 @@ function RideHeight({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.rideHeight) return;
-    try { localStorage.setItem(`fh6.ride.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(rideHeightTarget(cur, s.analytics, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.ride.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(rideHeightTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!rh) return null;
   const deltas = rideHeightDeltas(s.analytics!, pooledRideHeight(s, meta.sessions));
@@ -1507,7 +1524,7 @@ function RideHeight({ s }: { s: SessionSummary }) {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
           // Label, hold and colour describe the move to the final target (FH6-22).
-          const { target, label: deltaLabel, held, dir } = handlingMove(RIDE_MOVE, curV, dd.d, plannedTarget(f.key));
+          const { target, label: deltaLabel, held, dir } = handlingMove(RIDE_MOVE, curV, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
           const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
             <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
@@ -1578,15 +1595,15 @@ function tireDeltas(a: SessionAnalytics): Record<string, { d: number; why: strin
   return o;
 }
 
-function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null): TireSettings {
+function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): TireSettings {
   const deltas = tireDeltas(a);
   const out: TireSettings = { ...cur };
   for (const f of TIRE_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
     const base = cur[f.key] ?? f.base;
-    out[f.key] = Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2));
+    out[f.key] = clampToLimit(Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2)), lim?.(f.key));
   }
   return out;
 }
@@ -1599,7 +1616,7 @@ function TirePressure({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.tires) return;
-    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur, s.analytics, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!tp) return null;
   const deltas = adaptDeltas(tireDeltas(s.analytics!), s, meta.sessions, tireDeltas);
@@ -1633,7 +1650,7 @@ function TirePressure({ s }: { s: SessionSummary }) {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
           const base = curV ?? f.base;
-          const target = plannedTarget(f.key) ?? Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2));
+          const target = clampToLimit(plannedTarget(f.key) ?? Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2)), limitOf(s)(f.key));
           const delta = Math.round((target - base) * 2) / 2;
           const held = delta === 0;
           const dColor = held ? 'var(--muted)' : delta < 0 ? 'var(--amber)' : 'var(--blue)';
@@ -1706,14 +1723,14 @@ function aeroDeltas(a: SessionAnalytics): Record<string, { d: number; why: strin
   return o;
 }
 
-function aeroTarget(cur: AeroSettings, a: SessionAnalytics, plan?: Plan | null): AeroSettings {
+function aeroTarget(cur: AeroSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf): AeroSettings {
   const deltas = aeroDeltas(a);
   const out: AeroSettings = { ...cur };
   for (const f of AERO_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = planned; continue; }
+    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const { target } = handlingMove(AERO_MOVE, cur[f.key], dd.d, null);
+    const { target } = handlingMove(AERO_MOVE, cur[f.key], dd.d, null, lim?.(f.key));
     if (target != null) out[f.key] = target; // % change needs your current downforce
   }
   return out;
@@ -1728,7 +1745,7 @@ function AeroBalance({ s }: { s: SessionSummary }) {
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.aeroBalance) return;
-    try { localStorage.setItem(`fh6.aero.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(aeroTarget(cur, s.analytics, plan))); } catch { /* ignore */ }
+    try { localStorage.setItem(`fh6.aero.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(aeroTarget(cur, s.analytics, plan, limitOf(s)))); } catch { /* ignore */ }
   }, [cur, s, plan]);
   if (!ab) return null;
   const deltas = aeroDeltas(s.analytics!);
@@ -1760,7 +1777,7 @@ function AeroBalance({ s }: { s: SessionSummary }) {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
           // Label, hold and colour describe the move to the final target; a cut is amber (FH6-22).
-          const { target, label: deltaLabel, held, dir } = handlingMove(AERO_MOVE, curV, dd.d, plannedTarget(f.key));
+          const { target, label: deltaLabel, held, dir } = handlingMove(AERO_MOVE, curV, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
           const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
             <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>

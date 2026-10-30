@@ -6,6 +6,8 @@
 // telemetry measurement (FH6-17) and tests/unit/handling.test.ts pins it.
 
 import type { SessionAnalytics } from './types';
+import { clampToLimit } from './limits';
+import type { MarkedLimit } from './limits';
 
 // FH6's alignment, ARB and damper settings all have 0.1 resolution.
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -112,12 +114,14 @@ const sign = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 // qi-trace: work-item="FH6-19" acceptance-criteria="AC-1, AC-2, AC-3, AC-4" risk-tier="medium" test-coverage="tests/unit/handling-move.test.ts"
 // qi-trace: work-item="FH6-22" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/ride-aero-rows.test.ts"
-export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null): HandlingMove {
+// qi-trace: work-item="FH6-25" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="high" test-coverage="tests/unit/limits.test.ts"
+// `limit` is the driver's MIN/MAX mark, if any: no target goes past it (FH6-25).
+export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null, limit?: MarkedLimit): HandlingMove {
   if (f.mode === 'pct') {
     // Springs, ride height and downforce move by a percentage of the current value, so
     // without one there is nothing to move from or to label.
     const k = 1 / (f.step ?? 1);
-    const target = planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100) * k) / k) : (cur ?? null));
+    const target = clampToLimit(planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100) * k) / k) : (cur ?? null)), limit);
     if (cur == null || target == null || target === cur) return { target, label: 'hold', held: true, dir: 0 };
     const dir = sign(target - cur);
     if (cur === 0) return { target, label: dir > 0 ? 'raise' : 'lower', held: false, dir };
@@ -127,8 +131,8 @@ export function handlingMove(f: MoveField, cur: number | undefined, d: number, p
     return { target, label, held: false, dir };
   }
   const base = cur ?? f.base;
-  if (base == null) return { target: planned, label: 'hold', held: true, dir: 0 };
-  const target = planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, r1(base + d))));
+  if (base == null) return { target: clampToLimit(planned, limit), label: 'hold', held: true, dir: 0 };
+  const target = clampToLimit(planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, r1(base + d)))), limit);
   const delta = r1(target - base);
   if (delta === 0) return { target, label: 'hold', held: true, dir: 0 };
   return { target, label: `${delta > 0 ? '+' : ''}${delta}`, held: false, dir: sign(delta) };

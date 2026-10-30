@@ -487,6 +487,9 @@ export function buildPlan(
     // recommending a change the game won't accept.
     if ((atLimit === 'min' && dir < 0) || (atLimit === 'max' && dir > 0)) {
       blocked = `you've marked this at its ${atLimit === 'min' ? 'minimum' : 'maximum'}${from != null ? ` (${from}${ch?.unit ?? ''})` : ''} — can't go further, this lever is used up`;
+      // The marked value IS the threshold (FH6-25). Leaving the computed target past it
+      // made every row that defers to the plan show it — "→ 138" beside "maximum (120)".
+      if (from != null) to = from;
     } else if (from != null && to != null && Math.abs(to - from) < (ch?.step ?? 1) * 0.5) {
       blocked = `already at the in-game limit (${from}${ch?.unit ?? ''}) — this lever is used up`;
     } else {

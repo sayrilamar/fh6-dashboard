@@ -3,6 +3,7 @@ import { getLatest, useMeta, useTick } from '../store';
 import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
 import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing';
 import { planForSession } from './Sessions';
+import { clampToLimit, markedLimit } from '../limits';
 import type { TuneSnapshot, TuneLimits } from '../types';
 
 // Pre-run tune capture. Recording what's ACTUALLY on the car before the run (instead of
@@ -144,8 +145,17 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
       const r = recommendedFor(c.key, carOrdinal);
       if (r != null) o[c.key] = r;
     }
-    return { ...o, ...gearRecs };
-  }, [channels, carOrdinal, gearRecs]);
+    // A setting marked MIN/MAX on this card is held at the value in its box: no "rec"
+    // chip suggests going past it (FH6-25).
+    const boxes: Record<string, number> = {};
+    for (const [k, v] of Object.entries(vals)) {
+      const n = Number(v);
+      if (v !== '' && Number.isFinite(n)) boxes[k] = n;
+    }
+    const all: Record<string, number> = { ...o, ...gearRecs };
+    for (const k of Object.keys(all)) all[k] = clampToLimit(all[k], markedLimit(limits, boxes, k));
+    return all;
+  }, [channels, carOrdinal, gearRecs, limits, vals]);
 
   // ONE CHANGE PER RUN.
   //
