@@ -414,6 +414,15 @@ function unresponsive(channel: string, s: SessionSummary, sessions: SessionSumma
   return Math.abs(d1) >= Math.abs(d0) * 0.75; // ask never shrank by even 25%
 }
 
+// How much worse a backfired change made its symptom. symptomDeltaPct is null when the
+// baseline sat near zero (a percentage from ~0 means nothing), so show the readings
+// instead. Asserting it non-null blanked the whole report (FH6-16); defaulting it to 0
+// said "0% worse".
+function worseBy(rv: ChangeReview): string {
+  if (rv.symptomDeltaPct != null) return `${Math.abs(rv.symptomDeltaPct).toFixed(0)}% worse`;
+  return `worse (${+(rv.before ?? 0).toFixed(2)} → ${+(rv.after ?? 0).toFixed(2)})`;
+}
+
 export function buildPlan(
   s: SessionSummary,
   sessions: SessionSummary[],
@@ -490,7 +499,7 @@ export function buildPlan(
         .sort((a, b) => (b.review!.symptomDeltaPct ?? 0) - (a.review!.symptomDeltaPct ?? 0))[0];
       if (failed) {
         const rv = failed.review!;
-        blocked = `tried this direction (${failed.from}→${failed.to}) and the ${rv.metricLabel} got ${rv.symptomDeltaPct!.toFixed(0)}% worse — proven wrong way, don't repeat`;
+        blocked = `tried this direction (${failed.from}→${failed.to}) and the ${rv.metricLabel} got ${worseBy(rv)} — proven wrong way, don't repeat`;
       } else {
         const dOf = deltaOfFor(c.channel);
         if (dOf && unresponsive(c.channel, s, sessions, dOf)) {
@@ -538,7 +547,7 @@ export function buildPlan(
       channel: e.channel,
       label: ch?.label ?? e.channel,
       delta: e.from - cur,
-      why: `going ${e.dir > 0 ? 'up' : 'down'} to ${e.to} made the ${e.review.metricLabel} ${Math.abs(e.review.symptomDeltaPct ?? 0).toFixed(0)}% worse — ${e.from} measured better, go back to it`,
+      why: `going ${e.dir > 0 ? 'up' : 'down'} to ${e.to} made the ${e.review.metricLabel} ${worseBy(e.review)} — ${e.from} measured better, go back to it`,
       symptom: Object.keys(PLAYBOOK).find((k) => PLAYBOOK[k].includes(e.channel)) ?? 'unknown',
       severity: 0.6,
       from: cur, to: e.from, rank: 0, kind: 'recovery',
