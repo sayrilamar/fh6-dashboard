@@ -3,11 +3,80 @@
 // so the unit suite tests the real limits rather than copies of them.
 
 import type { MoveField } from './handling';
+import type { Candidate } from './plan';
 import type { SessionAnalytics } from './types';
 
 // qi-trace: work-item="FH6-24" acceptance-criteria="AC-1, AC-3" risk-tier="medium" test-coverage="tests/unit/diff-brake-rows.test.ts"
 // Diff settings are whole percentages, 0–100.
 export const diffMove = (f: { base: number }): MoveField => ({ mode: 'abs', base: f.base, min: 0, max: 100, step: 1 });
+
+const sev = (x: number) => Math.max(0, Math.min(1, x));
+
+// qi-trace: work-item="FH6-36" acceptance-criteria="AC-2" risk-tier="high" test-coverage="tests/unit/best-tune-reason.test.ts"
+// How badly the front spins or pushes under power, 0–1: typical front accel slip from 25 %
+// (fine) to 100 %, or a push on exit from 8 % to 30 % of exit frames. The Front Accel row
+// and the planner share it, so the row never asks for a change the planner can't weigh.
+export const frontSpinSeverity = (frontSpinPct: number, exitUsPct = 0) =>
+  Math.max(sev((frontSpinPct - 25) / 75), sev((exitUsPct - 8) / 22));
+
+// Per-channel diff adjustment for THIS run, scaled by symptom severity (0..1). Moved here
+// from Sessions.tsx (FH6-36) so the unit suite can check it.
+export function diffDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
+  const h = a.handling;
+  const r = (n: number) => Math.round(n);
+  // Use length-normalized slide RATES (events per 1000 cornering frames) so the
+  // advice reflects car behaviour, not stint length. ~2/1k = settled, ~7/1k = bad.
+  const powerRate = h ? h.slideCausePer1k.power : 0;
+  const trailRate = h ? h.slideCausePer1k.trailBrake : 0;
+  const powerSev = sev((powerRate - 2) / 5);
+  const trailSev = sev((trailRate - 2) / 5);
+  const exitUS = h ? sev((h.exit.usPct - 8) / 22) : 0;
+  const entryUS = h ? sev((h.entry.usPct - 8) / 22) : 0;
+  const rearSpin = a.diff.accelSlipRearPct ?? 0;
+  const frontSpin = a.diff.accelSlipFrontPct ?? 0;
+  const frontSev = frontSpinSeverity(frontSpin, h?.exit.usPct ?? 0);
+
+  const o: Record<string, { d: number; why: string }> = {};
+  o.rearAccel = powerSev > 0.05
+    ? { d: -r(12 * powerSev), why: `power-oversteer (${powerRate}/1k corner frames) — lower so both rears don't break loose together` }
+    : exitUS > 0.05 ? { d: -r(6 * exitUS), why: 'push on exit — lower a little to free rotation' }
+      : { d: 0, why: 'power delivery settled — hold' };
+  o.rearDecel = trailSev > 0.05
+    ? { d: -r(8 * trailSev), why: `rear locks under braking (${trailRate}/1k corner frames) — lower decel lock (pair with brake bias forward)` }
+    : entryUS > 0.05 ? { d: r(6 * entryUS), why: "won't turn in on the brakes — add a little decel lock for stability" }
+      : { d: 0, why: 'entry settled — hold' };
+  o.frontAccel = frontSev > 0.05
+    ? { d: -r(10 * frontSev), why: `front pushing / spinning (${frontSpin}%) — lower front lock` }
+    : { d: 0, why: 'front traction fine — hold' };
+  o.frontDecel = entryUS > 0.2 ? { d: r(8 * entryUS), why: "won't rotate on entry — a little decel lock helps" } : { d: 0, why: 'leave near 0' };
+  const imb = rearSpin - frontSpin;
+  o.center = (powerSev > 0.05 && imb > 10) ? { d: -r(Math.min(10, imb / 3)), why: `rear over-driven / spinning (${rearSpin}% vs front ${frontSpin}%) — shift torque FORWARD` }
+    : (frontSpin > rearSpin + 10) ? { d: r(Math.min(10, (frontSpin - rearSpin) / 3)), why: `front doing too much (${frontSpin}% vs rear ${rearSpin}%) — bias REARWARD to rotate` }
+      : { d: 0, why: 'front/rear spin balanced — hold' };
+  return o;
+}
+
+// qi-trace: work-item="FH6-36" acceptance-criteria="AC-2" risk-tier="high" test-coverage="tests/unit/best-tune-reason.test.ts"
+// The planner's candidate for front accel lock, scored on front wheelspin at its median over
+// recent runs when there is one. It was a row the planner never collected: never reviewed,
+// never blocked, so it kept asking for 41 → 38 beside a banner saying the levers were used
+// up (FH6-36). Rear-drive cars have no front diff.
+export function frontAccelCandidate(a: SessionAnalytics, dt: string, pooledFrontSpin: number | null): Omit<Candidate, 'label'> | null {
+  if (dt !== 'FWD' && dt !== 'AWD') return null;
+  const row = diffDeltas(a).frontAccel;
+  const spin = pooledFrontSpin ?? a.diff.accelSlipFrontPct ?? 0;
+  return { channel: 'frontAccel', delta: row.d, why: row.why, symptom: 'frontWheelspin', severity: frontSpinSeverity(spin, a.handling?.exit.usPct ?? 0) };
+}
+
+// qi-trace: work-item="FH6-36" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/best-tune-reason.test.ts"
+// What a ride-height move is for. Raising it cures bottoming. Lowering it while the car
+// doesn't bottom is a refinement: a lower centre of gravity. Both were tagged "bottoming",
+// so on car #1335, at the game's minimum height and 0 % bottoming, the banner said it
+// "still shows suspension bottoming out" (FH6-36).
+export function rideHeightTag(d: number, bottomPct: number): { symptom: 'bottoming' | 'lowerCG'; severity: number } {
+  if (d < 0) return { symptom: 'lowerCG', severity: 0.25 };
+  return { symptom: 'bottoming', severity: bottomPct >= 1 ? 0.7 : 0.25 };
+}
 
 // The brake balance a car starts from when none is entered, by drivetrain.
 export const brakeBalBase = (dt: string) => (dt === 'FWD' ? 66 : dt === 'AWD' ? 60 : 58);

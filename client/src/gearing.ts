@@ -179,6 +179,9 @@ export interface GearSolution {
   solved: boolean;
   /** Seconds saved over the old geometric arc, when both could be simulated. */
   gainVsGeometricSec: number | null;
+  /** Saved over the box as entered, when every gear is entered: seconds, and % of its time. */
+  gainVsCurrentSec: number | null;
+  gainVsCurrentPct: number | null;
 }
 
 /**
@@ -199,6 +202,8 @@ export function solveGearing(
     exponent: DEFAULT_P,
     solved: false,
     gainVsGeometricSec: null,
+    gainVsCurrentSec: null,
+    gainVsCurrentPct: null,
   };
 
   const geoT = accelTime(setForExponent(first, top, numGears, GEOMETRIC_P), ctx);
@@ -218,12 +223,50 @@ export function solveGearing(
   }
   if (!isFinite(bestT)) return fallback;
 
+  // The box as entered, when every gear is: what re-spacing it would actually save.
+  let gainVsCurrentSec: number | null = null, gainVsCurrentPct: number | null = null;
+  const current: GearRatios = {};
+  for (let n = 1; n <= numGears; n++) if (ratios[n] != null) current[n] = ratios[n];
+  if (Object.keys(current).length === numGears) {
+    const curT = accelTime(current, ctx);
+    if (curT != null) {
+      gainVsCurrentSec = Math.max(0, curT - bestT);
+      gainVsCurrentPct = (gainVsCurrentSec / bestT) * 100;
+    }
+  }
+
   return {
     ratios: setForExponent(first, top, numGears, bestP),
     exponent: Math.round(bestP * 100) / 100,
     solved: true,
     gainVsGeometricSec: Math.max(0, geoT - bestT),
+    gainVsCurrentSec,
+    gainVsCurrentPct,
   };
+}
+
+// qi-trace: work-item="FH6-36" acceptance-criteria="AC-3" risk-tier="medium" test-coverage="tests/unit/best-tune-reason.test.ts"
+// The least a re-spaced box must save, as a share of the time through the box, before it
+// is worth a run. The validated default exponent lands within 0.09–0.35 % of the per-car
+// optimum and is trusted as the fallback, so a smaller gap is the solver's own precision.
+// Car #1335's rows asked for 2.42 → 2.48, 1.82 → 1.87, 1.45 → 1.48 and 1.19 → 1.20:
+// worth 0.03–0.07 % (0.006–0.012 s per pull), less than the solved targets moved between
+// two runs on the same tune (FH6-36).
+export const GEARBOX_MIN_GAIN_PCT = 0.25;
+
+// The box to run: the solved one, or the one entered when re-spacing gains too little.
+export function recommendedBox(
+  ratios: GearRatios,
+  numGears: number,
+  ctx: GearContext,
+): { sol: GearSolution; box: GearRatios; held: boolean } | null {
+  const sol = solveGearing(ratios, numGears, ctx);
+  if (!sol) return null;
+  const held = sol.gainVsCurrentPct != null && sol.gainVsCurrentPct < GEARBOX_MIN_GAIN_PCT;
+  if (!held) return { sol, box: sol.ratios, held };
+  const box: GearRatios = {};
+  for (let n = 1; n <= numGears; n++) box[n] = ratios[n];
+  return { sol, box, held };
 }
 
 // ---------------------------------------------------------------------------

@@ -105,9 +105,18 @@ const PLAYBOOK: Record<string, string[]> = {
   understeer: ['frontARB', 'frontCamber', 'caster', 'frontToe', 'frontSpring', 'frontAero'],
   frontLock: ['balance', 'pressure'],
   bottoming: ['frontHeight', 'rearHeight', 'frontBump', 'rearBump'],
+  lowerCG: ['frontHeight', 'rearHeight'],
+  frontWheelspin: ['frontAccel'],
   aeroBalance: ['frontAero', 'rearAero'],
   launch: ['gear1'],
 };
+
+// qi-trace: work-item="FH6-36" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/best-tune-reason.test.ts"
+// Refinements, not symptoms: the car isn't misbehaving, there is only room to gain. When a
+// refinement's levers are used up it is finished, so it never makes the car "out of
+// levers" and the banner never names it. Lowering car #1335 at its minimum height, with
+// 0 % bottoming, read "still shows suspension bottoming out" (FH6-36).
+export const REFINEMENTS = new Set(['lowerCG']);
 
 // ---------------------------------------------------------------------------
 // Judging whether a change WORKED.
@@ -122,6 +131,7 @@ type Metric = (a: SessionAnalytics) => number | null;
 const rearLoose: Metric = (a) => (a.handling ? Math.max(a.handling.slideCausePer1k.power, a.handling.slideCausePer1k.grip) : null);
 const trailRate: Metric = (a) => a.handling?.slideCausePer1k.trailBrake ?? null;
 const powerRate: Metric = (a) => a.handling?.slideCausePer1k.power ?? null;
+const frontSpin: Metric = (a) => a.diff?.accelSlipFrontPct ?? null;
 const usRate: Metric = (a) => (a.handling ? (a.handling.understeerFrames / Math.max(1, a.handling.cornerFrames)) * 1000 : null);
 const bottoming: Metric = (a) => (a.rideHeight ? Math.max(a.rideHeight.frontBottomPct, a.rideHeight.rearBottomPct) : null);
 const aeroShift: Metric = (a) => (a.aeroBalance ? Math.abs(a.aeroBalance.shift) : null);
@@ -156,6 +166,8 @@ export const SYMPTOM_METRIC: Record<string, { metric: Metric; label: string; alt
   rearDecel: { metric: trailRate, label: 'rear-slide-under-braking rate' },
   rearAccel: { metric: powerRate, label: 'power-oversteer rate' },
   center: { metric: powerRate, label: 'power-oversteer rate' },
+  // FH6-36: car #1335's 44 → 41 had no verdict at all before this; it is "no effect".
+  frontAccel: { metric: frontSpin, label: 'front wheelspin under power' },
   rearToe: { metric: rearLoose, label: 'rear-looseness rate', alt: { metric: trailRate, label: 'rear-slide-under-braking rate' } },
   rearARB: { metric: rearLoose, label: 'rear-looseness rate', alt: { metric: trailRate, label: 'rear-slide-under-braking rate' } },
   rearCamber: { metric: rearLoose, label: 'rear-looseness rate' },
@@ -635,7 +647,8 @@ export function buildPlan(
   const queued = ordered.filter((c) => !thisRun.includes(c));
   // Status is purely behavioural: is anything actionable left, and can we act on it?
   const ACTIONABLE = 0.25;                       // below this a symptom isn't worth chasing
-  const worst = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+  // A refinement with no lever left is finished, not a limit (FH6-36).
+  const worst = [...bySymptom.entries()].filter(([k]) => !REFINEMENTS.has(k)).sort((a, b) => b[1] - a[1])[0] ?? null;
   const worstSeverity = worst ? worst[1] : 0;
   // Only the worst symptom's own levers count as used up: ride heights marked at their
   // minimum (bottoming) aren't brake levers, yet "out of levers" counted them (FH6-32).
@@ -659,6 +672,8 @@ export const SYMPTOM_LABEL: Record<string, string> = {
   understeer: 'front pushes',
   frontLock: 'fronts lock under braking',
   bottoming: 'suspension bottoming out',
+  lowerCG: 'room to lower the car',
+  frontWheelspin: 'front wheelspin under power',
   aeroBalance: 'balance shifts with speed',
   launch: 'launch traction',
 };
@@ -682,7 +697,11 @@ export function tuneVerdict(s: SessionSummary, plan: Plan, previous: Plan | null
   const symptom = kind === 'build-limit' ? plan.status.worstSymptom : null;
   return {
     kind,
-    confirmed: previous != null && previous.status.state === plan.status.state,
+    // qi-trace: work-item="FH6-36" acceptance-criteria="AC-4" risk-tier="medium" test-coverage="tests/unit/best-tune-reason.test.ts"
+    // What is confirmed is that nothing is left to change. Whether the remaining symptom
+    // counts as mild is a threshold: car #1335's front wheelspin sits on it (median 43 %
+    // one run, 45 % the next), so requiring the same kind never confirmed (FH6-36).
+    confirmed: previous != null && previous.status.state !== 'tuning',
     symptom,
     usedUp: symptom ? plan.blocked.filter((b) => b.symptom === symptom) : [],
   };

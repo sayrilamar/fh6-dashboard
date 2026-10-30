@@ -6,13 +6,13 @@ import { fmt, lapTime } from '../format';
 import type { SessionSummary, SessionIssue, SessionAnalytics, TuneSnapshot, EventType } from '../types';
 import { CHANNELS, isGearRatioKey, learnGain, applyGain } from '../tune';
 import { buildPlan, GROUP_LABEL, leverGroup, previousSameTune, SYMPTOM_LABEL, tuneVerdict } from '../plan';
-import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
+import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics, recommendedBox, GEARBOX_MIN_GAIN_PCT } from '../gearing';
 import type { GearContext } from '../gearing';
 import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange, TuneVerdict } from '../plan';
 import { usePerRun } from '../perRun';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
-import { brakeAdvice, brakeMove, diffMove } from '../rows';
+import { brakeAdvice, brakeMove, diffDeltas, diffMove, frontAccelCandidate, rideHeightTag } from '../rows';
 import { damperMove } from '../damping';
 import { clampToLimit, markedLimit } from '../limits';
 import { EVENT_TYPES, eventLabel, sameEventType } from '../events';
@@ -335,43 +335,6 @@ const DIFF_FIELDS: Record<string, { key: keyof DiffSettings; label: string; base
     { key: 'center', label: 'Center · % rear', base: 65 },
   ],
 };
-
-// Per-channel adjustment for THIS run, scaled by symptom severity (0..1).
-function diffDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
-  const h = a.handling;
-  const sev = (x: number) => Math.max(0, Math.min(1, x));
-  const r = (n: number) => Math.round(n);
-  // Use length-normalized slide RATES (events per 1000 cornering frames) so the
-  // advice reflects car behaviour, not stint length. ~2/1k = settled, ~7/1k = bad.
-  const powerRate = h ? h.slideCausePer1k.power : 0;
-  const trailRate = h ? h.slideCausePer1k.trailBrake : 0;
-  const powerSev = sev((powerRate - 2) / 5);
-  const trailSev = sev((trailRate - 2) / 5);
-  const exitUS = h ? sev((h.exit.usPct - 8) / 22) : 0;
-  const entryUS = h ? sev((h.entry.usPct - 8) / 22) : 0;
-  const rearSpin = a.diff.accelSlipRearPct ?? 0;
-  const frontSpin = a.diff.accelSlipFrontPct ?? 0;
-  const frontSpinSev = sev((frontSpin - 25) / 75);
-
-  const o: Record<string, { d: number; why: string }> = {};
-  o.rearAccel = powerSev > 0.05
-    ? { d: -r(12 * powerSev), why: `power-oversteer (${powerRate}/1k corner frames) — lower so both rears don't break loose together` }
-    : exitUS > 0.05 ? { d: -r(6 * exitUS), why: 'push on exit — lower a little to free rotation' }
-      : { d: 0, why: 'power delivery settled — hold' };
-  o.rearDecel = trailSev > 0.05
-    ? { d: -r(8 * trailSev), why: `rear locks under braking (${trailRate}/1k corner frames) — lower decel lock (pair with brake bias forward)` }
-    : entryUS > 0.05 ? { d: r(6 * entryUS), why: "won't turn in on the brakes — add a little decel lock for stability" }
-      : { d: 0, why: 'entry settled — hold' };
-  o.frontAccel = (frontSpinSev > 0.05 || exitUS > 0.05)
-    ? { d: -r(10 * Math.max(frontSpinSev, exitUS)), why: `front pushing / spinning (${frontSpin}%) — lower front lock` }
-    : { d: 0, why: 'front traction fine — hold' };
-  o.frontDecel = entryUS > 0.2 ? { d: r(8 * entryUS), why: "won't rotate on entry — a little decel lock helps" } : { d: 0, why: 'leave near 0' };
-  const imb = rearSpin - frontSpin;
-  o.center = (powerSev > 0.05 && imb > 10) ? { d: -r(Math.min(10, imb / 3)), why: `rear over-driven / spinning (${rearSpin}% vs front ${frontSpin}%) — shift torque FORWARD` }
-    : (frontSpin > rearSpin + 10) ? { d: r(Math.min(10, (frontSpin - rearSpin) / 3)), why: `front doing too much (${frontSpin}% vs rear ${rearSpin}%) — bias REARWARD to rotate` }
-      : { d: 0, why: 'front/rear spin balanced — hold' };
-  return o;
-}
 
 // Generic closed-loop inheritance. A new session's "current" starts from the
 // previous same-car session's RECOMMENDED target (current + measured delta),
@@ -850,6 +813,9 @@ const gearCtx = (a: SessionAnalytics): GearContext => contextFromAnalytics(a);
 
 const solvedSet = (ratios: GearRatioInputs, numGears: number, a: SessionAnalytics) =>
   solveGearing(ratios, numGears, gearCtx(a));
+// The box to run: solved, or held as entered when re-spacing gains too little (FH6-36).
+const boxFor = (ratios: GearRatioInputs, numGears: number, a: SessionAnalytics) =>
+  recommendedBox(ratios, numGears, gearCtx(a));
 
 // Total gears = detected top gear, but never fewer than the highest gear you've typed.
 const gearCount = (a: SessionAnalytics, ratios: GearRatioInputs): number => {
@@ -877,7 +843,7 @@ function gearCountFor(a: SessionAnalytics, ratios: GearRatioInputs, carOrdinal?:
 // override, so with an override set the box on screen and the box handed to Confirm &
 // Record were solved for different gear counts.
 function gearTarget(cur: GearRatioInputs, a: SessionAnalytics, carOrdinal?: number): GearRatioInputs {
-  return solvedSet(cur, gearCountFor(a, cur, carOrdinal), a)?.ratios ?? cur;
+  return boxFor(cur, gearCountFor(a, cur, carOrdinal), a)?.box ?? cur;
 }
 
 function GearRatios({ s }: { s: SessionSummary }) {
@@ -903,7 +869,7 @@ function GearRatios({ s }: { s: SessionSummary }) {
   useEffect(() => {
     if (!s.analytics || Object.keys(ratios).length === 0) return;
     const key = `fh6.gears.c.${s.meta?.carOrdinal ?? 'unknown'}`;
-    const solvedRatios = solvedSet(ratios, numGears, s.analytics)?.ratios;
+    const solvedRatios = boxFor(ratios, numGears, s.analytics)?.box;
     const t = solvedRatios ? clampRatios(solvedRatios, limitOf(s)) : null;
     try {
       if (t) localStorage.setItem(key, JSON.stringify(t));
@@ -925,8 +891,9 @@ function GearRatios({ s }: { s: SessionSummary }) {
   };
 
   const gearList = Array.from({ length: numGears }, (_, i) => i + 1);
-  const sol = solvedSet(ratios, numGears, s.analytics!);
-  const target = sol ? clampRatios(sol.ratios, limitOf(s)) : null;
+  const rec = boxFor(ratios, numGears, s.analytics!);
+  const sol = rec?.sol ?? null;
+  const target = rec ? clampRatios(rec.box, limitOf(s)) : null;
   const first = ratios[1], top = ratios[numGears];
   const anchorsSet = target != null;
   // Bog line = PEAK TORQUE rpm: below it the engine labors (a real bog). Landing
@@ -1015,6 +982,11 @@ function GearRatios({ s }: { s: SessionSummary }) {
             {sol?.solved && sol.gainVsGeometricSec != null && sol.gainVsGeometricSec > 0.01 && (
               <div style={{ marginTop: 3, fontWeight: 400, color: 'var(--muted)', fontSize: 11 }}>
                 Solved against your measured power band (progression exponent {sol.exponent}) — about <b>{sol.gainVsGeometricSec.toFixed(2)}s</b> per full pull through the box versus the evenly-spaced arc a basic calculator would give you.
+              </div>
+            )}
+            {rec?.held && sol?.gainVsCurrentSec != null && sol.gainVsCurrentPct != null && (
+              <div style={{ marginTop: 3, fontWeight: 400, color: 'var(--muted)', fontSize: 11 }}>
+                Your box is already within <b>{sol.gainVsCurrentSec.toFixed(3)}s</b> per full pull ({sol.gainVsCurrentPct.toFixed(2)}%) of the solved spacing — under the {GEARBOX_MIN_GAIN_PCT}% worth a run, so the ratios hold.
               </div>
             )}
             {sol && !sol.solved && (
@@ -2064,7 +2036,7 @@ function carHasEnteredTune(s: SessionSummary, sessions: SessionSummary[]): boole
 // trail-brake rate went 4.5 → 0 → 1.7 → 0 with nothing changed), so choosing WHICH
 // symptom to attack from a single run means chasing whichever one happened to spike.
 // The median across recent runs is what the car actually does.
-export interface PooledSymptoms { trailBrake: number; power: number; grip: number; usRate: number; runs: number }
+export interface PooledSymptoms { trailBrake: number; power: number; grip: number; usRate: number; frontSpin: number | null; runs: number }
 function pooledSymptoms(s: SessionSummary, sessions: SessionSummary[], n = 5): PooledSymptoms | null {
   const recent = sessions
     .filter((x) => x.meta?.carOrdinal === s.meta?.carOrdinal && sameEventType(s, x) && x.startedAt <= s.startedAt && x.analytics?.handling)
@@ -2075,11 +2047,15 @@ function pooledSymptoms(s: SessionSummary, sessions: SessionSummary[], n = 5): P
     const v = recent.map((x) => f(x.analytics!.handling!)).sort((a, b) => a - b);
     return v[Math.floor((v.length - 1) / 2)];
   };
+  // Typical front wheelspin under power: on car #1335 it read 41–46 % with nothing changed,
+  // around the planner's action threshold, so a single run would flip the verdict (FH6-36).
+  const fs = recent.map((x) => x.analytics!.diff?.accelSlipFrontPct).filter((v): v is number => v != null).sort((a, b) => a - b);
   return {
     trailBrake: med((h) => h.slideCausePer1k.trailBrake),
     power: med((h) => h.slideCausePer1k.power),
     grip: med((h) => h.slideCausePer1k.grip),
     usRate: med((h) => (h.understeerFrames / Math.max(1, h.cornerFrames)) * 1000),
+    frontSpin: fs.length ? fs[Math.floor((fs.length - 1) / 2)] : null,
     runs: recent.length,
   };
 }
@@ -2128,6 +2104,9 @@ function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAn
   push('rearDecel', dd.rearDecel?.d ?? 0, dd.rearDecel?.why ?? '', 'trailBrakeOversteer', trailSev);
   push('rearAccel', dd.rearAccel?.d ?? 0, dd.rearAccel?.why ?? '', 'powerOversteer', powerSev);
   if (dt === 'AWD') push('center', dd.center?.d ?? 0, dd.center?.why ?? '', 'powerOversteer', powerSev * 0.8);
+  // Front wheelspin under power → front accel lock (FH6-36).
+  const fa = frontAccelCandidate(a, dt, ps?.frontSpin ?? null);
+  if (fa) push(fa.channel, fa.delta, fa.why, fa.symptom, fa.severity);
 
   const rearSymptom = trailSev >= Math.max(powerSev, gripSev) ? 'trailBrakeOversteer' : powerSev >= gripSev ? 'powerOversteer' : 'gripOversteer';
   const rearSev = Math.max(trailSev, powerSev, gripSev);
@@ -2157,8 +2136,11 @@ function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAn
   if (a.rideHeight) {
     const rhSrc = pooledRH ?? a.rideHeight;
     const bot = Math.max(rhSrc.frontBottomPct, rhSrc.rearBottomPct);
-    push('frontHeight', rd.frontHeight?.d ?? 0, rd.frontHeight?.why ?? '', 'bottoming', bot >= 1 ? 0.7 : 0.25);
-    push('rearHeight', rd.rearHeight?.d ?? 0, rd.rearHeight?.why ?? '', 'bottoming', bot >= 1 ? 0.7 : 0.25);
+    for (const k of ['frontHeight', 'rearHeight'] as const) {
+      const d = rd[k]?.d ?? 0;
+      const tag = rideHeightTag(d, bot);
+      push(k, d, rd[k]?.why ?? '', tag.symptom, tag.severity);
+    }
   }
   if (a.aeroBalance) {
     const asev = sev((Math.abs(a.aeroBalance.shift) - 0.05) / 0.15);
@@ -2239,9 +2221,11 @@ function NextChange({ s, plan }: { s: SessionSummary; plan: Plan }) {
         <div className="note crit" style={{ marginBottom: 8 }}>
           <b>Out of levers — this is a build limit, not a tuning problem.</b>
           <div style={{ marginTop: 3 }}>
-            The car still shows <b>{SYMPTOM_LABEL[plan.status.worstSymptom ?? ''] ?? plan.status.worstSymptom}</b>, but all
-            {' '}{plan.status.blockedLevers} lever{plan.status.blockedLevers === 1 ? '' : 's'} that could fix it are either at
-            their in-game limit or have been measurably disproven on this car. Look at tyre compound/width, weight or power.
+            The car still shows <b>{SYMPTOM_LABEL[plan.status.worstSymptom ?? ''] ?? plan.status.worstSymptom}</b>, but
+            {plan.status.blockedLevers === 1
+              ? ' the one lever that could fix it is either at its in-game limit or has been measurably disproven on this car.'
+              : ` all ${plan.status.blockedLevers} levers that could fix it are either at their in-game limit or have been measurably disproven on this car.`}
+            {' '}Look at tyre compound/width, weight or power.
           </div>
         </div>
       )}
@@ -2385,7 +2369,7 @@ function TuneVerdictBanner({ v }: { v: TuneVerdict }) {
       </div>
       <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
         {v.confirmed
-          ? 'Confirmed: the previous run on this same tune reached the same verdict.'
+          ? 'Confirmed: the previous run on this same tune had nothing left to change either.'
           : 'Not confirmed yet — run it once more without changing anything. One clean-looking run can be luck.'}
       </div>
     </div>

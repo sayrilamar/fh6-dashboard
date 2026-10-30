@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getLatest, useMeta, useTick } from '../store';
 import { channelsFor, recommendedFor, VALID_DRIVETRAINS, isGearRatioKey } from '../tune';
-import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing';
+import { recommendedBox, finalDriveTarget, contextFromAnalytics } from '../gearing';
 import { planForSession } from './Sessions';
 import { GROUP_LABEL, leverGroup } from '../plan';
 import { setPerRun, usePerRun } from '../perRun';
@@ -134,8 +134,9 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     // same set; the recommendation doesn't chase itself.
     const ratios: Record<number, number> = {};
     for (let n = 1; n <= 10; n++) { const v = num(`gear${n}`); if (v != null) ratios[n] = v; }
-    const sol = solveGearing(ratios, numGears, contextFromAnalytics(a));
-    if (sol) for (let n = 1; n <= numGears; n++) if (sol.ratios[n] != null) out[`gear${n}`] = sol.ratios[n];
+    // A box within the floor of the solved spacing holds as entered (FH6-36).
+    const rec = recommendedBox(ratios, numGears, contextFromAnalytics(a));
+    if (rec) for (let n = 1; n <= numGears; n++) if (rec.box[n] != null) out[`gear${n}`] = rec.box[n];
 
     // Final drive is solved relative to the recorded run, never the form (see
     // finalDriveTarget in gearing.ts for why).
