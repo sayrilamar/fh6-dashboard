@@ -1556,82 +1556,67 @@ function RideHeight({ s }: { s: SessionSummary }) {
   );
 }
 
-// Tire-pressure run-over-run adjustment. FH sets pressure per axle (front/rear), and
-// grip peaks with the tire in its temperature window. Closed loop toward the ideal:
-// too HOT → lower psi (in FH, higher psi crowns the tread and concentrates heat); too
-// COLD once warmed → raise psi. LIMITATION: the packet gives one temp per corner, not
-// the tread's inner/middle/outer split, so it can't separate over-inflation (middle
-// hot) from under-inflation (shoulders hot) — verify with the in-game 3-zone tire
-// display if a tire stays out of the window after a couple of runs.
+// Tires (FH6-26): the run's temperatures as information, and the pressures you run.
+// Pressure never follows temperature: FH6-27 measured that it moves neither temperature
+// nor grip, on tarmac or dirt. The rows stay as entry fields with MIN/MAX marks, so the
+// next run's pre-fill keeps what you set.
 interface TireSettings { frontPsi?: number; rearPsi?: number }
-const TIRE_FIELDS: { key: keyof TireSettings; label: string; tempKey: 'frontTempF' | 'rearTempF'; base: number }[] = [
-  { key: 'frontPsi', label: 'Front · Pressure', tempKey: 'frontTempF', base: 30 },
-  { key: 'rearPsi', label: 'Rear · Pressure', tempKey: 'rearTempF', base: 30 },
+const TIRE_FIELDS: { key: keyof TireSettings; label: string; base: number }[] = [
+  { key: 'frontPsi', label: 'Front · Pressure', base: 30 },
+  { key: 'rearPsi', label: 'Rear · Pressure', base: 30 },
 ];
 const PSI_MIN = 15, PSI_MAX = 55;
-// Pressure moves in 0.5 psi steps within the game's range; the row and the next-run pre-fill
-// share this one rule (FH6-23). Every confirmed pressure so far sits on the 0.5 grid.
+// Pressure sits on a 0.5 psi grid within the game's range (FH6-23). It only ever holds
+// now, and a hold shows the entered value exactly.
 const psiMove = (f: { base: number }): MoveField => ({ mode: 'abs', base: f.base, min: PSI_MIN, max: PSI_MAX, step: 0.5 });
 
-function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null, lim?: LimitOf, ev?: EventType): TireSettings {
-  const deltas = tireDeltas(a, ev);
-  const out: TireSettings = { ...cur };
-  for (const f of TIRE_FIELDS) {
-    const planned = targetFromPlan(plan ?? null, f.key as string);
-    const dd = deltas[f.key];
-    if (planned == null && (!dd || dd.d === 0)) continue; // a hold keeps the entered value
-    const { target } = handlingMove(psiMove(f), cur[f.key], dd?.d ?? 0, planned, lim?.(f.key));
-    if (target != null) out[f.key] = target;
-  }
-  return out;
+// Pressure always holds, so the next run starts from what was entered.
+function tireTarget(cur: TireSettings): TireSettings {
+  return { ...cur };
 }
 
 function TirePressure({ s }: { s: SessionSummary }) {
-  const plan = useContext(PlanCtx);
   const meta = useMeta();
   const tp = s.analytics?.tires;
   const [state, setState] = useState(() => inheritSettings<TireSettings>(s, meta.sessions, 'fh6.tire', tireTarget, TIRE_FIELDS.map((f) => f.key)));
   const { cur, from, edited } = state;
   useEffect(() => {
     if (!s.analytics?.tires) return;
-    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur, s.analytics, plan, limitOf(s), s.meta?.eventType))); } catch { /* ignore */ }
-  }, [cur, s, plan]);
+    try { localStorage.setItem(`fh6.tire.c.${s.meta?.carOrdinal ?? 'unknown'}`, JSON.stringify(tireTarget(cur))); } catch { /* ignore */ }
+  }, [cur, s]);
   if (!tp) return null;
-  const deltas = adaptDeltas(tireDeltas(s.analytics!, s.meta?.eventType), s, meta.sessions, (x) => tireDeltas(x));
-  const plannedTarget = (ch: string) => targetFromPlan(plan, ch);
+  const deltas = tireDeltas(s.analytics!);
   const update = (k: keyof TireSettings, v: string) => {
     const next = { ...cur, [k]: v === '' ? undefined : Number(v) };
     setState({ cur: next, from: 'self', edited: true });
     try { localStorage.setItem(`fh6.tire.s.${s.id}`, JSON.stringify(next)); } catch { /* ignore */ }
   };
-  const inheritNote = from === 'prev' && edited ? " Pre-filled from your previous run's RECOMMENDATION — edit to override."
+  const inheritNote = from === 'prev' && edited ? " Pre-filled from your previous run — edit to override."
     : from === 'car' ? ' Pre-filled from your last saved pressures for this car.' : '';
-  const tempColor = (t: number | null) => t == null ? 'var(--muted)'
-    : t > tp.hotF ? 'var(--red)' : t < tp.coldF ? 'var(--blue)' : Math.abs(t - tp.idealF) <= 15 ? 'var(--green)' : 'var(--amber)';
 
   return (
     <>
-      <div className="sec-head">
-        Tire Pressure — {edited ? 'run-over-run adjustment' : 'starting point'}
+      <div className="sec-head">Tire temperatures</div>
+      <div className="stat-grid" style={{ marginTop: 6 }}>
+        <span className="k">Front · typical / peak</span>
+        <span className="v">{fmt(tp.frontTempF)} / {fmt(tp.frontPeakF)} °F</span>
+        <span className="k">Rear · typical / peak</span>
+        <span className="v">{fmt(tp.rearTempF)} / {fmt(tp.rearPeakF)} °F</span>
       </div>
       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
-        Enter your in-game hot pressures (psi). Each run nudges toward the grip window (ideal ~{tp.idealF}°F): hot → lower, cold → raise, until the tires sit in the sweet spot.{inheritNote}
+        Typical is the median over the last two-thirds of the run. Time in water is left out of both.
+        {tp.rearShared && ' FH6 sent one temperature for both rear tires, so rear left and right can\'t be told apart.'}
       </div>
-      <div className="stat-grid" style={{ marginTop: 6 }}>
-        <span className="k">Front temp FL / FR</span>
-        <span className="v"><span style={{ color: tempColor(tp.flTempF) }}>{tp.flTempF ?? '–'}</span> / <span style={{ color: tempColor(tp.frTempF) }}>{tp.frTempF ?? '–'}</span> °F</span>
-        <span className="k">Rear temp RL / RR</span>
-        <span className="v"><span style={{ color: tempColor(tp.rlTempF) }}>{tp.rlTempF ?? '–'}</span> / <span style={{ color: tempColor(tp.rrTempF) }}>{tp.rrTempF ?? '–'}</span> °F</span>
+      <div className="sec-head" style={{ marginTop: 10 }}>Tire Pressure</div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
+        Enter the hot pressures you run (psi). The report doesn't change them: in FH6, pressure moved neither tire temperature nor grip in tests on tarmac and dirt. Common starting points are about 26–28 psi for stock, street or rally tires, and 30–33 psi for semi-slick, slick or drift tires.{inheritNote}
       </div>
       <div className="notes" style={{ marginTop: 6 }}>
         {TIRE_FIELDS.map((f) => {
-          const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
-          // Same rule as the pre-fill: a hold shows the entered value, never a rounded one (FH6-23).
-          const { target, label: deltaLabel, held, dir } = handlingMove(psiMove(f), curV, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
-          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
+          const { target, label: deltaLabel } = handlingMove(psiMove(f), curV, 0, null, limitOf(s)(f.key));
           return (
-            <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
+            <div key={f.key} className="note info" style={{ borderLeftColor: 'var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
                 <b>{f.label}</b>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontVariantNumeric: 'tabular-nums' }}>
@@ -1645,18 +1630,15 @@ function TirePressure({ s }: { s: SessionSummary }) {
                     onChange={(e) => update(f.key, e.target.value)}
                   />
                   <span style={{ color: 'var(--muted)' }}>→</span>
-                  <b style={{ color: dColor, minWidth: 40, textAlign: 'right' }}>{target}</b>
-                  <span style={{ color: dColor, fontSize: 11, minWidth: 38 }}>{deltaLabel}</span>
+                  <b style={{ color: 'var(--muted)', minWidth: 40, textAlign: 'right' }}>{target}</b>
+                  <span style={{ color: 'var(--muted)', fontSize: 11, minWidth: 38 }}>{deltaLabel}</span>
                   <ChannelStatus channel={f.key} />
                 </span>
               </div>
-              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{dd.why}{curV == null ? ` · baseline ${f.base} psi` : ''}</div>
+              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{deltas[f.key]?.why}{curV == null ? ` · baseline ${f.base} psi` : ''}</div>
             </div>
           );
         })}
-      </div>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
-        Apply the → psi, run again, and it re-adjusts from the new temps until the tires sit near {tp.idealF}°F. <b>Limitation:</b> the game only sends one temp per tire, not the inner/middle/outer split — so if a tire stays out of the window after adjusting, check the in-game 3-zone tire display: middle hottest = lower psi, both shoulders hottest = raise psi.
       </div>
     </>
   );
@@ -1794,11 +1776,9 @@ const CLASS_NAMES: Record<number, string> = { 0: 'D', 1: 'C', 2: 'B', 3: 'A', 4:
 // driver can act on it directly in the in-game Tune menu (tuning order: tires →
 // gearing → alignment → ARBs → springs → damping → aero → brakes → diff).
 // IMPORTANT vocabulary the advice is careful about:
-//   • PRESSURE is psi (Tires & Alignment page). TEMPERATURE is °F (telemetry).
-//     They are NOT the same slider — raising psi can RAISE temp, so chase the
-//     green temp window in small 0.5 psi steps and re-check.
-//   • Front/rear TEMP imbalance is a BALANCE (ARB/camber/driving) issue, not a
-//     pressure one — psi barely moves the gap.
+//   • PRESSURE is psi (Tires & Alignment page). TEMPERATURE is °F (telemetry). In FH6
+//     pressure doesn't move temperature (FH6-27, tarmac and dirt), so the tire issues
+//     report temperature and never ask for a pressure change (FH6-26).
 const ISSUE_GUIDE: Record<string, { title: string; fix: string }> = {
   understeer: {
     title: 'Understeer — front pushes wide',
@@ -1809,16 +1789,16 @@ const ISSUE_GUIDE: Record<string, { title: string; fix: string }> = {
     fix: 'Soften the REAR Anti-roll Bar a few clicks. Loose on entry/lift? Lower Deceleration diff and add rear Toe-in (−0.1°, toe-in is negative). Loose only at speed → add rear Aero.',
   },
   'tire-hot': {
-    title: 'Tires too HOT (temperature)',
-    fix: 'DROP that tire’s PRESSURE (psi) 0.5–1 at a time — in Forza, higher psi crowns the tire (smaller patch) so it runs HOTTER with less grip, the opposite of the real-world “add air to cut flex heat” rule. Confirm with the in-game 3-zone tire telemetry: middle hottest → lower psi; both shoulders hottest → RAISE psi instead; inner edge only → less Camber; evenly hot → ease Aero / driving.',
+    title: 'Tires hot (temperature)',
+    fix: 'Information only. In FH6, tire pressure doesn’t move tire temperature (tested on tarmac and dirt), so the report doesn’t change pressure for it. The Tires card shows this run’s typical and peak temperatures.',
   },
   'tire-crit': {
-    title: 'Tires CRITICALLY hot (temperature)',
-    fix: 'DROP those tires’ PRESSURE (psi) ~1–2 and reduce Camber — you’re cooking the compound. In Forza higher psi = hotter, so lowering it cools the tire and adds grip. Exception: if the in-game telemetry shows the SHOULDERS hottest (not the middle), the tire is under-inflated — RAISE psi. Also back off Aero load and smooth inputs.',
+    title: 'Tires very hot (temperature)',
+    fix: 'Information only. In FH6, tire pressure doesn’t move tire temperature (tested on tarmac and dirt), so the report doesn’t change pressure for it. The Tires card shows this run’s typical and peak temperatures.',
   },
   'tire-cold': {
-    title: 'Tires below temp window',
-    fix: 'A small % here is just warm-up on the opening lap — IGNORE it. Only act if a tire stays cold once you’re up to pace: then RAISE that tire’s PRESSURE (psi) in 0.5 steps. Rears naturally run cooler than fronts — that alone is fine.',
+    title: 'Tires cool (temperature)',
+    fix: 'Information only. In FH6, tire pressure doesn’t move tire temperature (tested on tarmac and dirt), so the report doesn’t change pressure for it. The Tires card shows this run’s typical and peak temperatures.',
   },
   bottom: {
     title: 'Suspension bottoming out',
@@ -1834,9 +1814,6 @@ const ISSUE_GUIDE: Record<string, { title: string; fix: string }> = {
 // correctly said "lower it, you're barely touching the stops".
 const ISSUE_OWNER: Record<string, { section: string; label: string }> = {
   bottom: { section: 'chassis', label: 'Ride Height' },
-  'tire-cold': { section: 'tires', label: 'Tire Pressure' },
-  'tire-hot': { section: 'tires', label: 'Tire Pressure' },
-  'tire-crit': { section: 'tires', label: 'Tire Pressure' },
   wheelspin: { section: 'diff', label: 'Differential' },
   oversteer: { section: 'grip', label: 'Grip & Balance' },
   understeer: { section: 'grip', label: 'Grip & Balance' },
@@ -1844,6 +1821,10 @@ const ISSUE_OWNER: Record<string, { section: string; label: string }> = {
 // Below this share of the run an issue is a handful of frames — worth showing, not
 // worth acting on. Prevents a 0.1% blip reading as loudly as a 40% problem.
 const MARGINAL_PCT = 0.5;
+
+// Runs recorded before FH6-26 stored tire triggers with pressure advice ("— raise
+// pressure …"). Show only the reading.
+const triggerText = (i: SessionIssue) => (i.code?.startsWith('tire-') ? i.msg.split(' — ')[0] : i.msg);
 
 function guideFor(i: SessionIssue, drivetrain?: string): { title: string; fix: string } {
   if (i.code === 'wheelspin') {
@@ -1867,10 +1848,11 @@ function guideFor(i: SessionIssue, drivetrain?: string): { title: string; fix: s
     return { title: 'Wheelspin under power', fix };
   }
   if (i.code === 'thermal-fr') {
-    return /Fronts/i.test(i.msg)
+    // Anchored: "Rears 22F hotter than fronts" also contains "fronts" (FH6-26).
+    return /^Fronts/.test(i.msg)
       ? {
           title: 'Fronts hotter than rears (understeer bias)',
-          fix: 'This is a BALANCE fix, not pressure — psi barely closes the gap. Fronts hotter = fronts overworked = the car pushes. Soften the FRONT ARB, add front Camber (−0.2 to −0.3°), and lower the Accel diff so the nose isn’t dragged wide on exit. Don’t keep dropping front psi — it can overheat the tire center.',
+          fix: 'This is a BALANCE fix, not pressure: in FH6, pressure doesn’t move tire temperature. Fronts hotter = fronts overworked = the car pushes. Soften the FRONT ARB, add front Camber (−0.2 to −0.3°), and lower the Accel diff so the nose isn’t dragged wide on exit.',
         }
       : {
           title: 'Rears hotter than fronts (oversteer bias)',
@@ -2145,7 +2127,7 @@ function pooledSymptoms(s: SessionSummary, sessions: SessionSummary[], n = 5): P
   };
 }
 
-function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAnalytics['rideHeight'], ps?: PooledSymptoms | null, pooledDamp?: SessionAnalytics['damping'], ev?: EventType): Candidate[] {
+function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAnalytics['rideHeight'], ps?: PooledSymptoms | null, pooledDamp?: SessionAnalytics['damping']): Candidate[] {
   const out: Candidate[] = [];
   const sev = (x: number) => Math.max(0, Math.min(1, x));
   const h = a.handling;
@@ -2172,7 +2154,6 @@ function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAn
   const bd = brakeAdvice(a);
   const hd = handlingDeltas(a);
   const dm = dampingDeltas(a, pooledDamp);
-  const td = tireDeltas(a, ev);
   const rd = rideHeightDeltas(a, pooledRH);
   const ad = aeroDeltas(a);
 
@@ -2222,11 +2203,6 @@ function collectCandidates(a: SessionAnalytics, dt: string, pooledRH?: SessionAn
     push('frontHeight', rd.frontHeight?.d ?? 0, rd.frontHeight?.why ?? '', 'bottoming', bot >= 1 ? 0.7 : 0.25);
     push('rearHeight', rd.rearHeight?.d ?? 0, rd.rearHeight?.why ?? '', 'bottoming', bot >= 1 ? 0.7 : 0.25);
   }
-  if (a.tires) {
-    const err = Math.max(Math.abs(a.tires.frontTempF - a.tires.idealF), Math.abs(a.tires.rearTempF - a.tires.idealF));
-    push('frontPsi', td.frontPsi?.d ?? 0, td.frontPsi?.why ?? '', 'tireTemp', sev((err - 10) / 40));
-    push('rearPsi', td.rearPsi?.d ?? 0, td.rearPsi?.why ?? '', 'tireTemp', sev((err - 10) / 40));
-  }
   if (a.aeroBalance) {
     const asev = sev((Math.abs(a.aeroBalance.shift) - 0.05) / 0.15);
     push('frontAero', ad.frontAero?.d ?? 0, ad.frontAero?.why ?? '', 'aeroBalance', asev);
@@ -2259,15 +2235,12 @@ function deltaLookup(channel: string): ((x: SessionSummary) => number | null) | 
     caster: handlingDeltas, frontARB: handlingDeltas, rearARB: handlingDeltas,
     frontSpring: handlingDeltas, rearSpring: handlingDeltas,
     frontRebound: dampingDeltas, rearRebound: dampingDeltas, frontBump: dampingDeltas, rearBump: dampingDeltas,
-    frontPsi: tireDeltas, rearPsi: tireDeltas,
     frontHeight: rideHeightDeltas, rearHeight: rideHeightDeltas,
     frontAero: aeroDeltas, rearAero: aeroDeltas,
     balance: brakeDeltas, pressure: brakeDeltas,
   };
   const fn = fns[channel];
   if (!fn) return null;
-  // Tire advice reads the run's event type: a loose-surface run was told to hold (FH6-28).
-  if (fn === tireDeltas) return (x: SessionSummary) => (x.analytics ? tireDeltas(x.analytics, x.meta?.eventType)[channel]?.d ?? null : null);
   return (x: SessionSummary) => (x.analytics ? fn(x.analytics)[channel]?.d ?? null : null);
 }
 
@@ -2517,7 +2490,6 @@ export function planForSession(s: SessionSummary, sessions: SessionSummary[]): P
       pooledRideHeight(s, sessions),
       pooledSymptoms(s, sessions),
       pooledDamping(s, sessions),
-      s.meta?.eventType,
     ),
     deltaLookup,
   );
@@ -2661,7 +2633,7 @@ function Report({ s }: { s: SessionSummary }) {
       )}
 
       {a?.tires && (
-        <Card id="tires" title="Tires" sub="run-over-run pressure toward the grip window" status="info" statusLabel="closed-loop">
+        <Card id="tires" title="Tires" sub="temperatures, and the pressures you run" status="info" statusLabel="information">
           <TirePressure key={`tire-${s.id}`} s={s} />
         </Card>
       )}
@@ -2751,7 +2723,7 @@ function Report({ s }: { s: SessionSummary }) {
                       limit, so follow that over the generic fix above.
                     </div>
                   )}
-                  <div style={{ marginTop: 3, fontSize: 10, color: 'var(--muted)' }}>Trigger: {i.msg}</div>
+                  <div style={{ marginTop: 3, fontSize: 10, color: 'var(--muted)' }}>Trigger: {triggerText(i)}</div>
                 </div>
               );
             })

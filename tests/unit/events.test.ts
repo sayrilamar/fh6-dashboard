@@ -5,6 +5,9 @@
 // qi-review-required: true
 // qi-risk-tier: high
 //
+// The tire-pressure hold on loose surfaces (AC-4) became a hold everywhere in FH6-26; its
+// tests moved to tests/unit/tire-temps.test.ts.
+//
 // The telemetry never says what kind of event a run was. On 2026-10-29 every run was a rally
 // car on dirt (a water crossing cools the tires ~45 °F), which the app couldn't tell from a
 // road race of similar length: the planner's only "same event" test was the finish distance
@@ -16,9 +19,8 @@ import { EVENT_TYPES, comparableRuns, defaultEventType, isLooseSurface, sameEven
 import { bracketFor } from '../../client/src/bisect';
 import { buildPlan } from '../../client/src/plan';
 import type { Candidate } from '../../client/src/plan';
-import { tireDeltas } from '../../client/src/tires';
 import { learnGain } from '../../client/src/tune';
-import type { EventType, SessionAnalytics, SessionSummary } from '../../client/src/types';
+import type { EventType, SessionSummary } from '../../client/src/types';
 import { EVENT_TYPE_KEYS, validEventType } from '../../server/event-types.js';
 import { BASE_SIZE, OFFSETS as O, parsePacket } from '../../server/parser.js';
 import { session } from '../fixtures/sessions';
@@ -120,24 +122,6 @@ describe('the planner\'s A/B reviews only use the same kind of event (AC-3)', ()
     const plan = buildPlan(road, [...dirt, road], soften, noHistory);
     expect(plan.experiments, 'no road A/B has been run yet').toHaveLength(0);
     expect(plan.blocked).toHaveLength(0);
-  });
-});
-
-describe('tire pressure holds on loose surfaces (AC-4)', () => {
-  // Tires averaging 150 °F against the 175 °F ideal: on tarmac the rule lowers pressure.
-  const cold = { tires: { frontTempF: 150, rearTempF: 150, flTempF: null, frTempF: null, rlTempF: null, rrTempF: null, idealF: 175, coldF: 140, hotF: 230, samples: 500 } } as unknown as SessionAnalytics;
-
-  it('holds both pressures on a dirt or cross-country run', () => {
-    for (const ev of ['dirt', 'crossCountry'] as const) {
-      const d = tireDeltas(cold, ev);
-      expect([d.frontPsi.d, d.rearPsi.d], ev).toEqual([0, 0]);
-      expect(d.frontPsi.why).toContain('loose surfaces');
-    }
-  });
-
-  it('keeps the temperature rule on tarmac and on unlabelled runs', () => {
-    expect(tireDeltas(cold, 'road').frontPsi.d, 'cold → lower 1.5 psi').toBe(-1.5);
-    expect(tireDeltas(cold).frontPsi.d).toBe(-1.5);
   });
 });
 

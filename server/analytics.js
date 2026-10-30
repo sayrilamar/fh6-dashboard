@@ -17,7 +17,6 @@ const WOT_BINS = 60;     // 0-120 m/s // air density kg/m^3
 const V100 = 44.704; // 100 mph in m/s
 // Tire grip window (°F), matching metrics.js TIRE. Ideal ~175; below cold or above
 // hot loses grip. Used to pressure-tune tires toward the window.
-const TIRE_COLD_F = 140, TIRE_IDEAL_F = 175, TIRE_HOT_F = 230;
 const MPH60 = 26.8224; // 60 mph in m/s
 const MPH100 = 44.704; // 100 mph in m/s
 const MPH_TO_MS_0_4 = 0.4 * 0.44704; // ~0.4 mph in m/s ("stopped" threshold)
@@ -101,9 +100,8 @@ export function freshAnalytics() {
     // clean frames. Drives ride-height: near 1.0 = bottoming (raise); well below =
     // headroom to lower for a lower CG / more aero.
     suspCompFront: [], suspCompRear: [],
-    // Sustained tire temperature (°F) per corner, once WARMED, off-kerb — for the
-    // tire-pressure closed loop (keep tires in the grip window).
-    tireTempSum: { fl: 0, fr: 0, rl: 0, rr: 0 }, tireTempN: { fl: 0, fr: 0, rl: 0, rr: 0 },
+    // Tire temperatures, shown as information (see addTireTemps).
+    ...freshTireTemps(),
   };
 }
 
@@ -163,14 +161,7 @@ export function addAnalyticsFrame(an, t, d, ts = 0) {
     if (t.brake > 0.5) { an.brakeSlipF.push(slF); an.brakeSlipR.push(slR); }
   }
 
-  // Sustained tire temperature per corner, off-kerb and once warmed (>= cold floor),
-  // for the tire-pressure loop. Mean is used (not peak) so a single hot corner spike
-  // doesn't skew the pressure recommendation.
-  if (!onSurface) {
-    for (const c of ['fl', 'fr', 'rl', 'rr']) {
-      if (t.tireTempF[c] >= TIRE_COLD_F) { an.tireTempSum[c] += t.tireTempF[c]; an.tireTempN[c]++; }
-    }
-  }
+  addTireTemps(an, t);
 
   // Traction crossover + launch: how the DRIVEN wheels behave at full throttle.
   // Below the crossover speed the car is grip-limited (spins); above it, power-
@@ -364,7 +355,7 @@ export function buildAnalytics(an, raceFrames, dyno = {}) {
     brakeEntryZones: an.brakeEntrySpeeds.length,
     damping: buildDamping(an, raceFrames),
     rideHeight: buildRideHeight(an),
-    tires: buildTirePressure(an),
+    tires: buildTireTemps(an),
     aeroBalance: buildAeroBalance(an),
     // Launch signals. accelG (median longitudinal g off the line) is the real
     // quality metric; wastedSpinPct (high slip WITHOUT acceleration) is the only
@@ -690,32 +681,53 @@ function buildAeroBalance(an) {
   };
 }
 
-// Tire-pressure calibration from sustained tire temperature. FH tire pressure is set
-// per axle (front/rear), and grip peaks in a temperature window (~cold–hot °F, ideal
-// mid-window). Running hot → lower pressure (in FH, higher psi crowns the tread,
-// concentrating load and heat); running cold once up to pace → raise pressure.
-// LIMITATION: the packet gives one temperature per corner, not the inner/middle/outer
-// tread split, so it can't tell OVER-inflation (middle hot) from UNDER-inflation
-// (shoulders hot). The client says as much and defers to the in-game 3-zone display
-// when a tire stays out of the window.
-function buildTirePressure(an) {
-  const mean = (c) => (an.tireTempN[c] >= 50 ? an.tireTempSum[c] / an.tireTempN[c] : null);
-  const fl = mean('fl'), fr = mean('fr'), rl = mean('rl'), rr = mean('rr');
-  if (fl == null && fr == null && rl == null && rr == null) return null;
-  const avg = (a, b) => (a != null && b != null ? (a + b) / 2 : a ?? b);
-  const front = avg(fl, fr), rear = avg(rl, rr);
-  if (front == null || rear == null) return null;
-  const nMin = Math.min(an.tireTempN.fl, an.tireTempN.fr, an.tireTempN.rl, an.tireTempN.rr);
+// Tire temperatures, as information only (FH6-26). FH6-27 measured that pressure moves
+// neither temperature nor grip, on tarmac or dirt, so nothing here drives a setting.
+// The old block averaged only frames at or above 140 °F: null on every dirt run (they
+// never get there), and on tarmac a reading that called the tires cold every run.
+//   - Water frames (puddle > 0) are left out: a crossing cools the tires ~45 °F.
+//   - The median covers the last two-thirds of the run; the opening third is warm-up.
+//   - FH6 sends one rear temperature for both rear wheels (every car checked so far);
+//     rearShared says when this run did.
+export function freshTireTemps() {
+  return { tireFront: [], tireRear: [], tireRearShared: 0 };
+}
+
+export function addTireTemps(acc, t) {
+  if (!t || !t.isRaceOn || !t.tireTempF) return;
+  const p = t.puddle;
+  if (p && Math.max(p.fl, p.fr, p.rl, p.rr) > 0) return;
+  const T = t.tireTempF;
+  acc.tireFront.push((T.fl + T.fr) / 2);
+  acc.tireRear.push((T.rl + T.rr) / 2);
+  if (T.rl === T.rr) acc.tireRearShared++;
+}
+
+// qi-trace: work-item="FH6-26" acceptance-criteria="AC-2" risk-tier="medium" test-coverage="tests/unit/tire-temps.test.ts"
+export function buildTireTemps(acc) {
+  const n = acc.tireFront.length;
+  if (n < 50) return null;
+  const late = Math.floor(n / 3);
   return {
-    frontTempF: round(front),
-    rearTempF: round(rear),
-    flTempF: fl != null ? round(fl) : null,
-    frTempF: fr != null ? round(fr) : null,
-    rlTempF: rl != null ? round(rl) : null,
-    rrTempF: rr != null ? round(rr) : null,
-    idealF: TIRE_IDEAL_F, coldF: TIRE_COLD_F, hotF: TIRE_HOT_F,
-    samples: nMin,
+    frontTempF: round(percentile(acc.tireFront.slice(late), 0.5), 1),
+    rearTempF: round(percentile(acc.tireRear.slice(late), 0.5), 1),
+    frontPeakF: round(maxOf(acc.tireFront), 1),
+    rearPeakF: round(maxOf(acc.tireRear), 1),
+    rearShared: acc.tireRearShared === n,
+    samples: n,
   };
+}
+
+// The same block rebuilt from a recording's lines, for runs saved before FH6-26.
+export function tireTempsFromLines(lines) {
+  const acc = freshTireTemps();
+  for (const line of lines) {
+    if (!line) continue;
+    let frame;
+    try { frame = JSON.parse(line); } catch { continue; }
+    if (frame && frame.t) addTireTemps(acc, frame.t);
+  }
+  return buildTireTemps(acc);
 }
 
 // Ride-height calibration from bump-travel usage per end. peakComp (p99 of worst-

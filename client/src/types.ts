@@ -191,10 +191,11 @@ export interface SessionAnalytics {
     frontBottomPct: number; rearBottomPct: number;
     samples: number;
   } | null;
+  // Information only (FH6-26): in FH6 pressure moves neither these nor grip (FH6-27).
   tires: {
-    frontTempF: number; rearTempF: number;
-    flTempF: number | null; frTempF: number | null; rlTempF: number | null; rrTempF: number | null;
-    idealF: number; coldF: number; hotF: number;
+    frontTempF: number; rearTempF: number; // median over the run's last two-thirds, out of water
+    frontPeakF: number; rearPeakF: number; // peak, out of water
+    rearShared: boolean;                   // FH6 sent one rear temperature for both wheels
     samples: number;
   } | null;
   aeroBalance: {

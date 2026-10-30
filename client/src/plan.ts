@@ -74,7 +74,6 @@ const PLAYBOOK: Record<string, string[]> = {
   gripOversteer: ['rearARB', 'rearCamber', 'rearAero', 'rearSpring'],
   understeer: ['frontARB', 'frontCamber', 'caster', 'frontToe', 'frontSpring', 'frontAero'],
   frontLock: ['balance', 'pressure'],
-  tireTemp: ['frontPsi', 'rearPsi'],
   bottoming: ['frontHeight', 'rearHeight', 'frontBump', 'rearBump'],
   aeroBalance: ['frontAero', 'rearAero'],
   launch: ['gear1'],
@@ -94,11 +93,6 @@ const rearLoose: Metric = (a) => (a.handling ? Math.max(a.handling.slideCausePer
 const trailRate: Metric = (a) => a.handling?.slideCausePer1k.trailBrake ?? null;
 const powerRate: Metric = (a) => a.handling?.slideCausePer1k.power ?? null;
 const usRate: Metric = (a) => (a.handling ? (a.handling.understeerFrames / Math.max(1, a.handling.cornerFrames)) * 1000 : null);
-// Per-END temp error. A shared max() across both ends could not attribute a FRONT
-// pressure change to the front: fixing the front while the rear sat further from ideal
-// left max() unchanged, so every front change scored "inconclusive".
-const tempErrF: Metric = (a) => (a.tires ? Math.abs(a.tires.frontTempF - a.tires.idealF) : null);
-const tempErrR: Metric = (a) => (a.tires ? Math.abs(a.tires.rearTempF - a.tires.idealF) : null);
 const bottoming: Metric = (a) => (a.rideHeight ? Math.max(a.rideHeight.frontBottomPct, a.rideHeight.rearBottomPct) : null);
 const aeroShift: Metric = (a) => (a.aeroBalance ? Math.abs(a.aeroBalance.shift) : null);
 // Mean rpm shortfall of measured shift landings vs peak-torque rpm (0 = none bog).
@@ -141,8 +135,6 @@ export const SYMPTOM_METRIC: Record<string, { metric: Metric; label: string; alt
   frontToe: { metric: usRate, label: 'understeer rate' },
   caster: { metric: usRate, label: 'understeer rate' },
   frontSpring: { metric: usRate, label: 'understeer rate' },
-  frontPsi: { metric: tempErrF, label: 'front tire-temp error' },
-  rearPsi: { metric: tempErrR, label: 'rear tire-temp error' },
   frontHeight: { metric: bottoming, label: 'bottoming %' },
   rearHeight: { metric: bottoming, label: 'bottoming %' },
   frontAero: { metric: aeroShift, label: 'speed-dependent balance shift' },
@@ -421,6 +413,12 @@ function worseBy(rv: ChangeReview): string {
   return `worse (${+(rv.before ?? 0).toFixed(2)} → ${+(rv.after ?? 0).toFixed(2)})`;
 }
 
+// qi-trace: work-item="FH6-26" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/tire-temps.test.ts"
+// Channels the planner never moves; the driver sets them. Tire pressure: FH6-27 measured
+// that it moves neither tire temperature nor any grip signal, on tarmac or dirt, so a run
+// spent on it could never be judged.
+export const MANUAL_ONLY = new Set(['frontPsi', 'rearPsi']);
+
 export function buildPlan(
   s: SessionSummary,
   sessions: SessionSummary[],
@@ -448,6 +446,7 @@ export function buildPlan(
   }
 
   // ---- 2. Rank candidates by symptom severity, then lever priority. ----
+  candidates = candidates.filter((c) => !MANUAL_ONLY.has(c.channel));
   const bySymptom = new Map<string, number>();
   for (const c of candidates) bySymptom.set(c.symptom, Math.max(bySymptom.get(c.symptom) ?? 0, c.severity));
   const dominant = [...bySymptom.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -582,7 +581,6 @@ export const SYMPTOM_LABEL: Record<string, string> = {
   gripOversteer: 'rear runs out of grip mid-corner',
   understeer: 'front pushes',
   frontLock: 'fronts lock under braking',
-  tireTemp: 'tires outside their temperature window',
   bottoming: 'suspension bottoming out',
   aeroBalance: 'balance shifts with speed',
   launch: 'launch traction',

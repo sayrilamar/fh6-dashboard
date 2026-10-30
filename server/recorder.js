@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TIRE } from './metrics.js';
-import { freshAnalytics, addAnalyticsFrame, buildAnalytics } from './analytics.js';
+import { freshAnalytics, addAnalyticsFrame, buildAnalytics, tireTempsFromLines } from './analytics.js';
 import { shouldBegin, freshRaceTracker, trackFrame } from './capture-gate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +35,7 @@ export class Recorder {
     this.prev = { speedMs: null, ts: 0, gear: null, rpm: 0, throttle: 0 };
     // A recording interrupted by a crash/restart leaves a .jsonl with no
     // .summary.json. Rebuild those summaries on boot so no run is lost.
-    if (autoRecover) this.recoverOrphans();
+    if (autoRecover) { this.recoverOrphans(); this.refreshTireTemps(); }
   }
 
   // Arm the recorder. Actual capture (and the session's car identity) is deferred
@@ -149,6 +149,35 @@ export class Recorder {
       console.log(`[recorder] recovered ${recovered.length} interrupted session(s): ${recovered.join(', ')}`);
     }
     return recovered;
+  }
+
+  // Runs saved before FH6-26 carry the old tire block (a mean of frames above 140 °F,
+  // null on every dirt run). Rebuild only that block from the recording, once: the
+  // rest of the summary, including an event type set in the report, is kept as is.
+  // A refreshed block has frontPeakF and is skipped from then on. A run too short to
+  // build one (under 50 dry frames) stays null and is re-read, which is cheap.
+  refreshTireTemps() {
+    let files;
+    try { files = fs.readdirSync(SESSIONS_DIR).filter((f) => f.endsWith('.summary.json')); } catch { return []; }
+    const refreshed = [];
+    for (const sf of files) {
+      const id = sf.slice(0, -'.summary.json'.length);
+      try {
+        const file = path.join(SESSIONS_DIR, sf);
+        const summary = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const a = summary.analytics;
+        if (!a || (a.tires && a.tires.frontPeakF !== undefined)) continue;
+        const jsonl = path.join(SESSIONS_DIR, `${id}.jsonl`);
+        if (!fs.existsSync(jsonl)) continue;
+        a.tires = tireTempsFromLines(fs.readFileSync(jsonl, 'utf8').split('\n'));
+        fs.writeFileSync(file, JSON.stringify(summary, null, 2));
+        refreshed.push(id);
+      } catch (e) {
+        console.error(`[recorder] could not refresh tire temperatures for ${id}: ${e.message}`);
+      }
+    }
+    if (refreshed.length) console.log(`[recorder] rebuilt tire temperatures for ${refreshed.length} earlier run(s)`);
+    return refreshed;
   }
 
   rebuildFromJsonl(id) {

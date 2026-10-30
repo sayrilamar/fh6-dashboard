@@ -3,11 +3,11 @@ id: FH6-26
 title: Stop steering tire pressure by temperature; show tire temperatures as information
 type: bug
 labels: [tuning-report, tires]
-modules: [server/analytics.js, client/src/components/Sessions.tsx, client/src/plan.ts, tests/unit]
+modules: [server/analytics.js, server/recorder.js, server/metrics.js, client/src/tires.ts, client/src/types.ts, client/src/components/Sessions.tsx, client/src/plan.ts, tests/unit]
 depends_on: [FH6-23, FH6-27]
 created: 2026-10-29
-started: null
-completed: null
+started: 2026-10-30
+completed: 2026-10-30
 points: null
 estimate: null        # not run through /estimate-story
 ---
@@ -127,3 +127,78 @@ rail.
 - The reference hot pressures from the 2026-08-03 notes (about 26–28 psi for
   stock, street or **rally** tires; 30–33 psi for semi-slick, slick or drift)
   could appear as static guidance, not as a closed loop.
+
+## Done (2026-10-30)
+
+- **No pressure advice from temperature (AC-1).**
+  - `tireDeltas` (`client/src/tires.ts`) holds both pressures, with the reason.
+  - The planner has no `tireTemp` symptom: it is gone from the playbook, the
+    labels and the A/B metrics (`tempErrF`/`tempErrR`).
+  - `buildPlan` drops `frontPsi`/`rearPsi` candidates (`MANUAL_ONLY`).
+    `collectCandidates` no longer emits them, and their bisection lookups are
+    gone, including FH6-28's event-type special case.
+  - The same advice also lived in three places the ACs didn't name. None of
+    them mentions pressure now:
+    - the live engineer notes (`server/metrics.js`)
+    - the three tire-temperature issue fixes in the report
+    - the "fronts hotter" fix
+  - Older runs stored their triggers with "— raise pressure …", so the report
+    shows only the reading.
+- **Temperatures as information (AC-2).** `server/analytics.js`
+  `buildTireTemps`, with no 140 °F floor:
+  - the median over the last two-thirds of the run, and the peak
+  - water frames (`puddle` > 0) left out of both
+  - `rearShared` when FH6 sent one rear temperature
+  - at least 50 dry frames required
+  - **Older runs:** at startup the recorder rebuilds just this block from each
+    run's recording, keeping the rest of the summary, event types included.
+    All 21 runs were rebuilt.
+  - **The card** is now "Tires — temperatures, and the pressures you run",
+    marked as information.
+- **Pressure rows (AC-3).** They stay entry fields with MIN/MAX marks, read
+  "hold" with the reason, and pre-fill the next run with what was entered. The
+  card adds the reference starting points: 26–28 psi street/rally, 30–33 psi
+  slick/drift.
+- **Tests (AC-4).** `tests/unit/tire-temps.test.ts` has 12 tests. The suite is
+  127/127, and the client type-check and build pass.
+  - 11 mutants each fail a test:
+    - the window rule restored in `tireDeltas`
+    - pressure candidates allowed back into the planner
+    - a metric for pressure A/Bs
+    - the 140 °F floor
+    - water frames counted
+    - a whole-run median
+    - `rearShared` set from any one frame
+    - menu frames counted
+    - the 50-frame minimum lowered
+    - pressure advice in a live note
+    - the rebuild failing on a bad line
+  - **Traceability change:** FH6-28's two tire tests in `events.test.ts`
+    expected the temperature rule on tarmac. This story supersedes them, so
+    they moved here. The `qi-trace` on `tireDeltas` changed from FH6-28 AC-4
+    to FH6-26 AC-1/AC-3.
+- **Live check (AC-5),** on a second server at port 8091.
+  - **6:09 PM dirt run of 2026-10-29.** The Tires card now appears: front
+    74 / 90 °F, rear 83 / 103 °F (typical / peak), with the rear-shared note.
+    Pressures read 29 hold and 32 hold. Before this story the run had no tire
+    data at all.
+  - **11:00 AM road run of 2026-10-30.**
+    - **Tires:** front 137 / 179 °F, rear 145 / 214 °F; pressures 26 hold
+      and 32 hold. This run used to say "lower 2 psi".
+    - **Next Change:** brake balance, with no pressure change queued.
+    - **"Tires cool" issue:** information only, its trigger reading "FL tire
+      cold (134F)".
+  - No console errors.
+- **Found and fixed during verification.** The front/rear temperature issue
+  picked its wording with `/Fronts/i`, and "Rears 22F hotter than fronts"
+  contains "fronts". So a run with hotter rears was labelled "Fronts hotter
+  than rears", with the front fix. The match is now anchored (`/^Fronts/`),
+  and the road run reads "Rears hotter than fronts".
+- **Left as is.** The wheelspin fix still suggests dropping rear pressure
+  1–2 psi "for a bigger patch". That advice isn't temperature-driven, and
+  FH6-27 only tested front pressure.
+- **Gaps.** No unit test covers:
+  - the Tires card, the issue texts and the removed candidates, all in
+    `Sessions.tsx`
+  - `recorder.refreshTireTemps`, which needs FH6-6's sessions-folder override
+  The live check covers all three.

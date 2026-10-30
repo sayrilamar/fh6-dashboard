@@ -104,9 +104,10 @@ export function engineerNotes(t, d) {
     ['RR', temps.rr],
   ];
   for (const [name, f] of corners) {
-    if (f > TIRE.critical) notes.push({ level: 'crit', code: `tire-crit-${name}`, msg: `${name} tire overheating (${f.toFixed(0)}F) — lower pressure / reduce camber / soften that end.` });
-    else if (f > TIRE.hot) notes.push({ level: 'warn', code: `tire-hot-${name}`, msg: `${name} tire hot (${f.toFixed(0)}F) — past ideal grip window.` });
-    else if (f < TIRE.cold) notes.push({ level: 'info', code: `tire-cold-${name}`, msg: `${name} tire cold (${f.toFixed(0)}F) — raise pressure or it carries little load.` });
+    // Temperature only, no pressure advice: in FH6 pressure doesn't move it (FH6-26/27).
+    if (f > TIRE.critical) notes.push({ level: 'crit', code: `tire-crit-${name}`, msg: `${name} tire overheating (${f.toFixed(0)}F)` });
+    else if (f > TIRE.hot) notes.push({ level: 'warn', code: `tire-hot-${name}`, msg: `${name} tire hot (${f.toFixed(0)}F)` });
+    else if (f < TIRE.cold) notes.push({ level: 'info', code: `tire-cold-${name}`, msg: `${name} tire cold (${f.toFixed(0)}F)` });
   }
 
   // F/R and L/R thermal balance
