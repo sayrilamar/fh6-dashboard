@@ -62,6 +62,7 @@ export interface Experiment {
   to: number;
   dir: 1 | -1;
   review?: ChangeReview | null;   // symptom-based verdict, when the channel has a metric
+  afterId: string;                // the run this change led to (the pair's second run)
 }
 
 // qi-trace: work-item="FH6-30" acceptance-criteria="AC-1" risk-tier="high" test-coverage="tests/unit/grouped-plan.test.ts"
@@ -378,21 +379,26 @@ export function experiments(s: SessionSummary, sessions: SessionSummary[]): Expe
     // pair as confounded.
     const gearsMoved = changed.filter(isGearRatioKey);
     if (gearsMoved.length > 1) changed = ['gearbox', ...changed.filter((k) => !isGearRatioKey(k))];
-    // Two changes in one group push on the same reading: confounded, can't attribute.
-    if (!changed.length || new Set(changed.map(leverGroup)).size !== changed.length) continue;
-    for (const k of changed) {
+    // qi-trace: work-item="FH6-31" acceptance-criteria="AC-3" risk-tier="high" test-coverage="tests/unit/change-review.test.ts"
+    // Two changes in one group push on the same reading: those levers are confounded and
+    // skipped. A lever alone in its group is still judged on its own metric — skipping the
+    // whole pair lost the rear accel and rear toe verdicts when the solved gearbox and final
+    // drive went in together (FH6-31).
+    const perGroup = new Map<LeverGroup, number>();
+    for (const k of changed) perGroup.set(leverGroup(k), (perGroup.get(leverGroup(k)) ?? 0) + 1);
+    for (const k of changed.filter((c) => perGroup.get(leverGroup(c)) === 1)) {
       if (k === 'gearbox') {
         // Represent the box by its overall spread (1st ÷ top), which is what re-spacing changes.
         const spread = (t: Record<string, number>) => {
           const gs = Object.keys(t).filter(isGearRatioKey).sort((x, y) => Number(x.slice(4)) - Number(y.slice(4)));
           return gs.length >= 2 ? +(t[gs[0]] / t[gs[gs.length - 1]]).toFixed(3) : 0;
         };
-        const e: Experiment = { channel: 'gearbox', from: spread(at), to: spread(bt), dir: spread(bt) > spread(at) ? 1 : -1 };
+        const e: Experiment = { channel: 'gearbox', from: spread(at), to: spread(bt), dir: spread(bt) > spread(at) ? 1 : -1, afterId: B.id };
         e.review = reviewChange(e, A, B, sessions);
         out.push(e);
         continue;
       }
-      const e: Experiment = { channel: k, from: at[k], to: bt[k], dir: bt[k] > at[k] ? 1 : -1 };
+      const e: Experiment = { channel: k, from: at[k], to: bt[k], dir: bt[k] > at[k] ? 1 : -1, afterId: B.id };
       e.review = reviewChange(e, A, B, sessions);
       out.push(e);
     }
@@ -479,21 +485,15 @@ export function buildPlan(
   const exps = experiments(s, sessions);
   const quality = runQuality(s);
 
-  // Review the changes that produced THIS run, each judged only on its targeted symptom.
-  const lastChanges: ChangeReview[] = [];
-  {
-    const hist = sessions
-      .filter((x) => x.startedAt <= s.startedAt && comparable(s, x) && x.meta?.tune)
-      .sort((a, b) => a.startedAt - b.startedAt);
-    const idx = hist.findIndex((x) => x.id === s.id);
-    if (idx > 0) {
-      const prev = hist[idx - 1];
-      for (const e of exps.filter((x) => prev.meta?.tune?.[x.channel] === x.from && s.meta?.tune?.[x.channel] === x.to)) {
-        const r = e.review ?? reviewChange(e, prev, s, sessions);
-        if (r) lastChanges.push(r);
-      }
-    }
-  }
+  // qi-trace: work-item="FH6-31" acceptance-criteria="AC-2" risk-tier="high" test-coverage="tests/unit/change-review.test.ts"
+  // Review the changes that produced THIS run (mined from the pair previous run → this
+  // run), each judged only on its targeted symptom. Matching by from/to values instead
+  // picked up every past change with the same values: the 2×2 had made balance 41 → 55
+  // three times, so one report listed that verdict four times (FH6-31).
+  const lastChanges = exps
+    .filter((x) => x.afterId === s.id)
+    .map((x) => x.review)
+    .filter((r): r is ChangeReview => r != null);
 
   // ---- 2. Rank candidates by symptom severity, then lever priority. ----
   candidates = candidates.filter((c) => !MANUAL_ONLY.has(c.channel));

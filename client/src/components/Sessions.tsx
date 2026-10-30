@@ -2790,6 +2790,11 @@ export function Engineer() {
   const sessions = meta.sessions;
   // Re-read the picked run from the live list, so a relabel (event type) shows at once.
   const selected = (sel && meta.sessions.find((x) => x.id === sel.id)) || sel || meta.lastSession;
+  // A new recording takes over the report, even if an older run was picked: the picked
+  // run used to stay up for runs on end, with its old verdicts (FH6-31). Picking a run in
+  // the list still works until the next recording.
+  const newestId = meta.lastSession?.id;
+  useEffect(() => { if (newestId) setSel(null); }, [newestId]);
 
   // Scroll-spy: highlight whichever section is nearest the top of the canvas.
   useEffect(() => {
