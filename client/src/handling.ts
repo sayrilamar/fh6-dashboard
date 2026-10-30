@@ -7,6 +7,9 @@
 
 import type { SessionAnalytics } from './types';
 
+// FH6's alignment, ARB and damper settings all have 0.1 resolution.
+const r1 = (n: number) => Math.round(n * 10) / 10;
+
 // Per-channel change from the measured balance. For abs fields `d` is in the field's
 // units (° or ARB clicks); for pct fields (springs) `d` is a percentage of current.
 //
@@ -22,7 +25,6 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
   const o: Record<string, { d: number; why: string }> = {};
   if (!h) return o;
   const sev = (x: number) => Math.max(0, Math.min(1, x));
-  const r1 = (n: number) => Math.round(n * 10) / 10;
   const cf = Math.max(1, h.cornerFrames);
   const p = h.slideCausePer1k;
   // Rear-slide severities (events per 1000 cornering frames): ~2/1k settled, ~7/1k bad.
@@ -92,4 +94,37 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
   o.rearSpring = latOS > 0.6 ? { d: -Math.round(5 + 5 * latOS), why: 'strong power/grip oversteer — if a softer rear ARB isn\'t enough, soften the rear spring' }
     : { d: 0, why: 'ARB is the primary balance lever — hold unless oversteer persists' };
   return o;
+}
+
+// One row of the Alignment, ARB & Springs table: where the setting should go, and the
+// label for that move. The label, hold state and direction are derived from the FINAL
+// target, the planner's when it has one. The rows used to build all three from the
+// symptom's own step and then swap the planner's target in underneath them, so rear toe
+// read "0° → −0.3°" beside a "−0.1" label and front ARB "34.3 → 40" beside "+1.7"
+// (FH6-19). They also rounded ARB targets to whole numbers, holds included, so a held
+// 34.3 read "34, −0.3": the phantom move FH6-18 removed from the damping rows.
+export interface MoveField { mode: 'abs' | 'pct'; base: number; min?: number; max?: number }
+export interface HandlingMove { target: number | null; label: string; held: boolean; dir: -1 | 0 | 1 }
+
+const sign = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
+
+// qi-trace: work-item="FH6-19" acceptance-criteria="AC-1, AC-2, AC-3, AC-4" risk-tier="medium" test-coverage="tests/unit/handling-move.test.ts"
+export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null): HandlingMove {
+  if (f.mode === 'pct') {
+    // Springs move by a percentage of the current rate, so without one there is nothing
+    // to move from or to label.
+    const target = planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100))) : (cur ?? null));
+    if (cur == null || target == null || target === cur) return { target, label: 'hold', held: true, dir: 0 };
+    const dir = sign(target - cur);
+    if (cur === 0) return { target, label: dir > 0 ? 'raise' : 'lower', held: false, dir };
+    const pct = Math.round((target / cur - 1) * 100);
+    // A real move too small to show as a whole percent is still a move, not a hold.
+    const label = pct === 0 ? `${dir > 0 ? '+' : '-'}<1%` : `${pct > 0 ? '+' : ''}${pct}%`;
+    return { target, label, held: false, dir };
+  }
+  const base = cur ?? f.base;
+  const target = planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, r1(base + d))));
+  const delta = r1(target - base);
+  if (delta === 0) return { target, label: 'hold', held: true, dir: 0 };
+  return { target, label: `${delta > 0 ? '+' : ''}${delta}`, held: false, dir: sign(delta) };
 }

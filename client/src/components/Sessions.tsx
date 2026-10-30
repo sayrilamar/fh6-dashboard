@@ -9,7 +9,7 @@ import { buildPlan, SYMPTOM_LABEL } from '../plan';
 import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } from '../gearing';
 import type { GearContext } from '../gearing';
 import type { Candidate, Plan } from '../plan';
-import { handlingDeltas } from '../handling';
+import { handlingDeltas, handlingMove } from '../handling';
 import { damperMove } from '../damping';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
@@ -145,8 +145,8 @@ const HANDLING_FIELDS: { key: keyof HandlingSettings; label: string; base: numbe
   { key: 'frontCamber', label: 'Front · Camber', base: -1.5, mode: 'abs', min: -5, max: 0.5, step: 0.1, unit: '°' },
   { key: 'rearCamber', label: 'Rear · Camber', base: -1.2, mode: 'abs', min: -5, max: 0.5, step: 0.1, unit: '°' },
   { key: 'caster', label: 'Caster', base: 5.0, mode: 'abs', min: 3, max: 7, step: 0.1, unit: '°' },
-  { key: 'frontARB', label: 'Front · ARB', base: 30, mode: 'abs', min: 1, max: 65, step: 1 },
-  { key: 'rearARB', label: 'Rear · ARB', base: 30, mode: 'abs', min: 1, max: 65, step: 1 },
+  { key: 'frontARB', label: 'Front · ARB', base: 30, mode: 'abs', min: 1, max: 65, step: 0.1 },
+  { key: 'rearARB', label: 'Rear · ARB', base: 30, mode: 'abs', min: 1, max: 65, step: 0.1 },
   { key: 'frontSpring', label: 'Front · Spring', base: 500, mode: 'pct', min: 1, step: 1 },
   { key: 'rearSpring', label: 'Rear · Spring', base: 500, mode: 'pct', min: 1, step: 1 },
 ];
@@ -165,16 +165,8 @@ function handlingTarget(cur: HandlingSettings, a: SessionAnalytics, plan?: Plan 
     const planned = targetFromPlan(plan ?? null, f.key as string);
     if (planned != null) { out[f.key] = planned; continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    if (f.mode === 'pct') {
-      const base = cur[f.key];
-      if (base == null) continue; // % change needs the current spring rate
-      out[f.key] = Math.max(f.min ?? 1, Math.round(base * (1 + dd.d / 100)));
-    } else {
-      const base = cur[f.key] ?? f.base;
-      let t = base + dd.d;
-      t = f.step < 1 ? Math.round(t * 10) / 10 : Math.round(t);
-      out[f.key] = Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, t));
-    }
+    const { target } = handlingMove(f, cur[f.key], dd.d, null);
+    if (target != null) out[f.key] = target; // a % change needs the current spring rate
   }
   return out;
 }
@@ -272,27 +264,10 @@ function Handling({ s }: { s: SessionSummary }) {
         {HANDLING_FIELDS.map((f) => {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
-          let target: number | null; let deltaLabel: string; let dColor: string; let held: boolean;
-          if (f.mode === 'pct') {
-            held = dd.d === 0;
-            target = plannedTarget(f.key) ?? (!held && curV != null ? Math.max(f.min ?? 1, Math.round(curV * (1 + dd.d / 100))) : (curV ?? null));
-            deltaLabel = moveLabel(curV, target, held);
-            dColor = held ? 'var(--muted)' : dd.d < 0 ? 'var(--amber)' : 'var(--blue)';
-          } else {
-            const base = curV ?? f.base;
-            let t = base + dd.d;
-            t = f.step < 1 ? Math.round(t * 10) / 10 : Math.round(t);
-            t = Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, t));
-            target = t;
-            const delta = Math.round((t - base) * 10) / 10;
-            held = delta === 0;
-            deltaLabel = held ? 'hold' : `${delta > 0 ? '+' : ''}${delta}`;
-            dColor = held ? 'var(--muted)' : delta < 0 ? 'var(--amber)' : 'var(--blue)';
-          }
-          // Defer to the planner's bisection target so this row can't print a different
-          // number from the Next Change card.
-          const planned = plannedTarget(f.key);
-          if (planned != null) target = planned;
+          // The planner's bisection target wins, so this row can't print a different number
+          // from the Next Change card; the label and colour describe the move to it.
+          const { target, label: deltaLabel, held, dir } = handlingMove(f, curV, dd.d, plannedTarget(f.key));
+          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           const showTarget = f.mode === 'pct' ? (curV != null ? `${target}` : '—') : `${target}${f.unit ?? ''}`;
           return (
             <div key={f.key} className="note info" style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
