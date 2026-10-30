@@ -6,8 +6,8 @@ labels: [refactor, testability, tuning-report]
 modules: [client/src/components/Sessions.tsx, tests/unit]
 depends_on: [FH6-19]
 created: 2026-10-29
-started: null
-completed: null
+started: 2026-10-29
+completed: 2026-10-29
 points: null
 estimate:
   id: 724a2222-7b08-40b2-813b-8276f49e21b3
@@ -73,3 +73,46 @@ Range **1–8** · confidence low · verdict estimable · anchor `5cf8628` (1): 
 
 Team fit: dev, plus QA (no QA slot). Bus factor: one deep slot on
 `client/src/components`. Full report: `story-estimate.md`.
+
+## Done (2026-10-29)
+
+- **`handlingMove()`'s `abs` mode** (`client/src/handling.ts`) honours
+  `MoveField.step`. The default stays 0.1, so toe, camber, caster and ARB are
+  unchanged. A small `roundTo()` helper serves both modes, and a hold is never
+  rounded. A `qi-trace` marker names FH6-23 (AC-1).
+- **`Sessions.tsx`:**
+  - The `TirePressure` row and `tireTarget()` both call `handlingMove` with
+    `psiMove(f)`: abs, 0.5 psi, `PSI_MIN`–`PSI_MAX`, each field's 30 psi
+    baseline. `PSI_MIN`/`PSI_MAX` are used only there (AC-1, AC-3).
+  - A hold keeps the entered value (an entered 29.3 no longer shows
+    "→ 29.5 hold"), and a planned target is labelled as the move to it
+    (AC-2).
+  - FH6-25's MIN/MAX threshold still applies.
+- **`tests/unit/tire-pressure-rows.test.ts`:** 8 tests from the 2026-10-29
+  pressures (29 / 32) (AC-4). They cover half-psi steps, fractional advice,
+  the 15–55 range, the baseline, the exact off-grid hold, an off-grid move
+  labelled by its real size, a planned move, and a MAX mark.
+  - Suite: 91/91; build passes.
+  - Three mutants each fail tests: `abs` ignoring the step, rounding a hold
+    (the old row), and dropping the 15–55 range.
+- **AC-5 check:** the pressure section doesn't render on the 6:09 PM run (see
+  the finding below), so it was checked by equivalence instead. A temporary
+  test, since deleted, compared the old row formula with `handlingMove` on
+  every on-grid pressure from 15 to 55 psi, across deltas −3…+3 with and
+  without a planner target. Of 6,075 cases, **0 differ** in target or label.
+  The rest of the 6:09 PM report rendered unchanged, with no float noise.
+
+### Finding (not in scope): the tire-pressure section never renders on these runs
+
+`buildTirePressure` (`server/analytics.js`) counts a tire's temperature only
+once it reaches `TIRE_COLD_F` (140 °F), and needs at least 50 such frames. On
+the 6:09 PM run (car #634) the hottest tire peaked at **102.8 °F**, and no
+frame reached 140 °F. None of the 2026-10-29 runs has tire analytics, so the
+tire-pressure closed loop never ran for this car.
+
+**Context from the driver:** all of those runs were a rally car in a dirt race.
+A water crossing about 20 s in drops tire temperatures about 45 °F, and the
+rest of the race is spent warming back up. The finding is about dirt, not the
+floor in general. It was investigated in FH6-26 (stop temperature-driven
+pressure) and FH6-27 (measure what pressure moves, on tarmac and on dirt).
+

@@ -105,23 +105,27 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
 // read "0° → −0.3°" beside a "−0.1" label and front ARB "34.3 → 40" beside "+1.7"
 // (FH6-19). They also rounded ARB targets to whole numbers, holds included, so a held
 // 34.3 read "34, −0.3": the phantom move FH6-18 removed from the damping rows.
-// `base` is the value an abs row assumes when nothing is entered; `step` is a pct row's
-// rounding (springs and downforce move in whole numbers, ride height in tenths).
+// `base` is the value an abs row assumes when nothing is entered. `step` is the rounding a
+// moved target lands on: abs rows default to FH6's 0.1 (tire pressure uses 0.5), pct rows
+// to whole numbers (ride height uses 0.1). A hold is never rounded.
 export interface MoveField { mode: 'abs' | 'pct'; base?: number; min?: number; max?: number; step?: number }
 export interface HandlingMove { target: number | null; label: string; held: boolean; dir: -1 | 0 | 1 }
 
 const sign = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
+// Round to a step without float noise: 1/0.1 and 1/0.5 are exact, so this is Math.round(n * 10) / 10
+// for tenths and Math.round(n * 2) / 2 for halves.
+const roundTo = (n: number, step: number) => { const k = 1 / step; return Math.round(n * k) / k; };
 
 // qi-trace: work-item="FH6-19" acceptance-criteria="AC-1, AC-2, AC-3, AC-4" risk-tier="medium" test-coverage="tests/unit/handling-move.test.ts"
 // qi-trace: work-item="FH6-22" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/ride-aero-rows.test.ts"
 // qi-trace: work-item="FH6-25" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="high" test-coverage="tests/unit/limits.test.ts"
+// qi-trace: work-item="FH6-23" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/tire-pressure-rows.test.ts"
 // `limit` is the driver's MIN/MAX mark, if any: no target goes past it (FH6-25).
 export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null, limit?: MarkedLimit): HandlingMove {
   if (f.mode === 'pct') {
     // Springs, ride height and downforce move by a percentage of the current value, so
     // without one there is nothing to move from or to label.
-    const k = 1 / (f.step ?? 1);
-    const target = clampToLimit(planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100) * k) / k) : (cur ?? null)), limit);
+    const target = clampToLimit(planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, roundTo(cur * (1 + d / 100), f.step ?? 1)) : (cur ?? null)), limit);
     if (cur == null || target == null || target === cur) return { target, label: 'hold', held: true, dir: 0 };
     const dir = sign(target - cur);
     if (cur === 0) return { target, label: dir > 0 ? 'raise' : 'lower', held: false, dir };
@@ -132,7 +136,7 @@ export function handlingMove(f: MoveField, cur: number | undefined, d: number, p
   }
   const base = cur ?? f.base;
   if (base == null) return { target: clampToLimit(planned, limit), label: 'hold', held: true, dir: 0 };
-  const target = clampToLimit(planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, r1(base + d)))), limit);
+  const target = clampToLimit(planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, roundTo(base + d, f.step ?? 0.1)))), limit);
   const delta = r1(target - base);
   if (delta === 0) return { target, label: 'hold', held: true, dir: 0 };
   return { target, label: `${delta > 0 ? '+' : ''}${delta}`, held: false, dir: sign(delta) };

@@ -1571,6 +1571,9 @@ const TIRE_FIELDS: { key: keyof TireSettings; label: string; tempKey: 'frontTemp
   { key: 'rearPsi', label: 'Rear · Pressure', tempKey: 'rearTempF', base: 30 },
 ];
 const PSI_MIN = 15, PSI_MAX = 55;
+// Pressure moves in 0.5 psi steps within the game's range; the row and the next-run pre-fill
+// share this one rule (FH6-23). Every confirmed pressure so far sits on the 0.5 grid.
+const psiMove = (f: { base: number }): MoveField => ({ mode: 'abs', base: f.base, min: PSI_MIN, max: PSI_MAX, step: 0.5 });
 
 function tireDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
   const tp = a.tires;
@@ -1600,10 +1603,10 @@ function tireTarget(cur: TireSettings, a: SessionAnalytics, plan?: Plan | null, 
   const out: TireSettings = { ...cur };
   for (const f of TIRE_FIELDS) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
-    const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const base = cur[f.key] ?? f.base;
-    out[f.key] = clampToLimit(Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2)), lim?.(f.key));
+    const dd = deltas[f.key];
+    if (planned == null && (!dd || dd.d === 0)) continue; // a hold keeps the entered value
+    const { target } = handlingMove(psiMove(f), cur[f.key], dd?.d ?? 0, planned, lim?.(f.key));
+    if (target != null) out[f.key] = target;
   }
   return out;
 }
@@ -1649,11 +1652,9 @@ function TirePressure({ s }: { s: SessionSummary }) {
         {TIRE_FIELDS.map((f) => {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
-          const base = curV ?? f.base;
-          const target = clampToLimit(plannedTarget(f.key) ?? Math.max(PSI_MIN, Math.min(PSI_MAX, Math.round((base + dd.d) * 2) / 2)), limitOf(s)(f.key));
-          const delta = Math.round((target - base) * 2) / 2;
-          const held = delta === 0;
-          const dColor = held ? 'var(--muted)' : delta < 0 ? 'var(--amber)' : 'var(--blue)';
+          // Same rule as the pre-fill: a hold shows the entered value, never a rounded one (FH6-23).
+          const { target, label: deltaLabel, held, dir } = handlingMove(psiMove(f), curV, dd.d, plannedTarget(f.key), limitOf(s)(f.key));
+          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
             <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
@@ -1670,7 +1671,7 @@ function TirePressure({ s }: { s: SessionSummary }) {
                   />
                   <span style={{ color: 'var(--muted)' }}>→</span>
                   <b style={{ color: dColor, minWidth: 40, textAlign: 'right' }}>{target}</b>
-                  <span style={{ color: dColor, fontSize: 11, minWidth: 38 }}>{held ? 'hold' : delta > 0 ? `+${delta}` : delta}</span>
+                  <span style={{ color: dColor, fontSize: 11, minWidth: 38 }}>{deltaLabel}</span>
                   <ChannelStatus channel={f.key} />
                 </span>
               </div>
