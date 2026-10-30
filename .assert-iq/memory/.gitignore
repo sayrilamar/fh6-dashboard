@@ -1,0 +1,21 @@
+# Dreaming runtime — local-only in EVERY install mode (trial, committed, and
+# after `--graduate`). The *results* of dreaming are team content and stay
+# tracked: MEMORY.md and topics/*.md. The raw inputs and the per-machine
+# counter are not.
+#
+#   logs/    one daily note per session — each developer's own chat activity.
+#   .dream/  state.json (sessions-since-dream counter, last-dream stamp) plus
+#            the dream/state locks. Per-machine, meaningless to a teammate,
+#            and a guaranteed merge conflict if two people commit it.
+#
+# A teammate pulling someone else's session logs and dream counter gets noise
+# and conflicts, not signal. Nothing in here is reconstructable-from or needed
+# by anyone but the machine that wrote it; the installers recreate both
+# directories on demand.
+#
+# IMPORTANT — additive patterns only, never negations (`!pattern`).
+# A .gitignore deeper in the tree outranks .git/info/exclude, so a negation
+# here silently RE-INCLUDES the file and defeats a trial-mode install.
+# Enforced by unit-gitignore-hygiene.sh.
+logs/
+.dream/

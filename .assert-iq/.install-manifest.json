@@ -1,6 +1,6 @@
 {
   "version": "2.2.0",
-  "installed_at": "2026-10-29T14:45:57Z",
+  "installed_at": "2026-10-30T02:15:34Z",
   "mode": "committed",
   "paths": [
     {
@@ -702,6 +702,354 @@
     {
       "action": "unchanged_owned",
       "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/skills",
+      "scope": "workspace",
+      "sha": ""
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-manual-test-case/SKILL.md",
+      "scope": "workspace",
+      "sha": "c199f9e2fcb2c68b158731cf4eb41150f6a1c763423e5e6a531691fc72e3931f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-traceability-matrix/SKILL.md",
+      "scope": "workspace",
+      "sha": "ac74f7b167e226dc31920a4163e6dcccffe79f3d3d3b9a201c7146ee93cff352"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-tests-from-ac/SKILL.md",
+      "scope": "workspace",
+      "sha": "c2f2e95a06e67882575348b41dd946cd4a214bf4faa986375cd831374d686aa7"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/analyze-escaped-defect/SKILL.md",
+      "scope": "workspace",
+      "sha": "f70023597bdc3c80b18aaede6eb3c2d29b48fb57ea3cc3ed8c8d28126b0a9e83"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-automated-api-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "0f901d7ddd6b7da59dbeea9a1aa9c457758a88f6e9f38a2841334ba7d63c76aa"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/debug-ui-tests/SKILL.md",
+      "scope": "workspace",
+      "sha": "941e23e67fb74bd3057838c10d116a16b0c8084a69bf07578c9d3b4b5e60755f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/measure-qi-impact/SKILL.md",
+      "scope": "workspace",
+      "sha": "f054f98cf64aa9c5a736ecad11d627c253f84c8106d05e5e11cf90675bcdc291"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/release-confidence/references/release-confidence-template.html",
+      "scope": "workspace",
+      "sha": "02f623d68ea098e344e62fe876cc31a225f0a4ba765fa89ad6f27cc3b24853d2"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/release-confidence/SKILL.md",
+      "scope": "workspace",
+      "sha": "5278c7abc73923067d487c1b2cfc95ded4d43995b52f105849734ea4d7c8ec0a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-hotspot-map/SKILL.md",
+      "scope": "workspace",
+      "sha": "dfe038f8df8762ece791149c06fa1786c74698791ab97b0615b4b0283f7dc296"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/estimate-story/references/estimate-report-template.md",
+      "scope": "workspace",
+      "sha": "a35c5f2466981296e6e9cba7b44416481fd447fe8cabef37063a588aa561a268"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/estimate-story/SKILL.md",
+      "scope": "workspace",
+      "sha": "0f1137f04b044bcc3565957c5dede86c307342324c11f23d26175db51110426b"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/assert-iq-tailor/SKILL.md",
+      "scope": "workspace",
+      "sha": "286f8e3cc04f42caf7b66a0cc0089ecc7927abda706d2fc774842d12f7998514"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/agentic-heal/SKILL.md",
+      "scope": "workspace",
+      "sha": "5d3333eea5b15e05f51a29830dfa70663b7ba315ad0be2499d0e1d03a3c4c113"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/code-review/SKILL.md",
+      "scope": "workspace",
+      "sha": "612c69ba726fe032843b1c6bf4f473ab31e95e1e90db4c13763892fe81861110"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-test-data/SKILL.md",
+      "scope": "workspace",
+      "sha": "c67b60d0f36f1a97c41225b4d836d038f05963f4f941ae418fd0e329f23556db"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-automated-ui-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "a4080d6313ce08d1721023bd9b2b70e7e11e4fd92896c2def06f4e6e54b8adb9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/review-acceptance-criteria/SKILL.md",
+      "scope": "workspace",
+      "sha": "3898640591ad277f48946e09fec8ead21ddc1391192beca92f876f05e9fb0813"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-bug-report/SKILL.md",
+      "scope": "workspace",
+      "sha": "6595c18567a41372e04a8637d56f7ba4a6d81b15fce4f0cb2d224d93ce97703b"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-exploratory-charter/SKILL.md",
+      "scope": "workspace",
+      "sha": "9cfb0a45c11e9270a32a00a65663d2302682aba2d602c329c4769c516db8ecef"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/risk-assess-pr/SKILL.md",
+      "scope": "workspace",
+      "sha": "b4ac5be0417f836a4b81573b7abe2492ff1481feae4891bace8bf4f5b991edff"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/define-quality-rubric/SKILL.md",
+      "scope": "workspace",
+      "sha": "f6fa721fe12b5cff3f014a1e93f97d599bb7654063b3aa370bbf5ba2750b8af9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/calibration-report/SKILL.md",
+      "scope": "workspace",
+      "sha": "a0c6033bfabe4dfba6642b445a998d5da909fe2307534d12ab639fed7ea1e7d0"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/new-pull-request/SKILL.md",
+      "scope": "workspace",
+      "sha": "c94683da8f88e67899e5c04ac1c9e018278ae120e59b08fec38e9835a1bf160e"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/check-test-coverage/SKILL.md",
+      "scope": "workspace",
+      "sha": "8e94ea084318269b199d5333cd9625d6783fc7c1c512c46af47a282a511e588a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/eval-optimizer/references/grading-rubric.md",
+      "scope": "workspace",
+      "sha": "d19056b75ab1a557582c1b841b4df99821c59afdb4619b5bd91427b7c9eac258"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/eval-optimizer/references/optimization-principles.md",
+      "scope": "workspace",
+      "sha": "20f58a986892a3b7a9b41800f4da80ed356cf444a1973789bf4f243066a0e45d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/eval-optimizer/SKILL.md",
+      "scope": "workspace",
+      "sha": "6dd380efa8e2a0b8832580e7afa98d0786711f16b5f10f193f6d4afd7f665dda"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-automated-unit-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "b8696583c824db1358a6a7880f3492bd1acbb374f8643f7869371dc951e1e1f6"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/analyze-flaky-test/SKILL.md",
+      "scope": "workspace",
+      "sha": "e40d2df013dbee906f0d997a9aedb65ef5e3da64c840fc53da26ed46b7efd3c4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/review-test-quality/SKILL.md",
+      "scope": "workspace",
+      "sha": "ff39ecd075f27be5ccf6679a7d20adc325794ab067d1e447c97ce497872625ed"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/assert-iq-bootstrap/SKILL.md",
+      "scope": "workspace",
+      "sha": "48681df26f5042a920d3ea51c4c0891e06006e3d792ac31c3d4d65c2fb20c7ec"
+    },
+    {
+      "action": "overwritten",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/dream/SKILL.md",
+      "scope": "workspace",
+      "sha": "29b6b0c60f966d4e1e51087b897797afcb6fd3aa01dadcb4816debb3924bb363"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/grade-with-rubric/SKILL.md",
+      "scope": "workspace",
+      "sha": "4b89614d4c3848d6a3d7ef8081672a78a2aefb449e4a3662d7a9ed5b0ff93a79"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/check-merge/SKILL.md",
+      "scope": "workspace",
+      "sha": "21696085ef8216449df74a9c7cd344d6243303bf91570fa8cb1094f21b44901d"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/skills/generate-test-plan/SKILL.md",
+      "scope": "workspace",
+      "sha": "eacf9410bf27fa960899ff553cdbc3c580ec22d14a938bc21c3d220b597f7677"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/Assert-IQ-PLAN.agent.md",
+      "scope": "workspace",
+      "sha": "fc065e62a31cd26583025d4b50be3d0bc95fd89ade2a49a968c9842fd87e7e2c"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/coverage-analyst.agent.md",
+      "scope": "workspace",
+      "sha": "d8256b6aaedc82828f960f07a4913ea832a17fd7aad2427ffa73efa05cd0c5a4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/hotspot-analyzer.agent.md",
+      "scope": "workspace",
+      "sha": "799f151136973618fcfb5ed33c0db846eea9611b15f3507608c9f1fee497563f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/memory-curator.agent.md",
+      "scope": "workspace",
+      "sha": "fc565ab3beaa71808691b1ac6533f3e6a97895a2d87f101926dca9af4f681182"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/flake-adjudicator.agent.md",
+      "scope": "workspace",
+      "sha": "d8b3b42b15364d2ab272c5adbe49ae6838fbf044962f510e377f4447d13da240"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/risk-scorer.agent.md",
+      "scope": "workspace",
+      "sha": "e1f0866579c62fb629459b314376c461b33519570d07824c2221f38c312c119a"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/traceability-auditor.agent.md",
+      "scope": "workspace",
+      "sha": "ab612e2144a08adc8d86495f1a1a717c23df1e41574208b03f26be4407770c3e"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/oracle-grader.agent.md",
+      "scope": "workspace",
+      "sha": "0c3d398d40918c3e9a1bde39e91bb312fe43d6a46678d907cddbc01796b5cdd3"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/specialists/calibration-specialist.agent.md",
+      "scope": "workspace",
+      "sha": "62b98ae28224cb2ba0d5538f2e44b59a81d80ccfa1363a3352dd0c4d5cc30f98"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.github/agents/Assert-IQ.agent.md",
+      "scope": "workspace",
+      "sha": "21e636a69030abc752a3deb2f167bce75a128da84e55f68bd8840caa62a192e1"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/assert-iq-plan.md",
+      "scope": "workspace",
+      "sha": "dd4260bee8875ac4002763294e7cb4b40f84664b12241a04d49560970a78c735"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/assert-iq.md",
+      "scope": "workspace",
+      "sha": "ddc6eee610b9163160ad00e1f85b620b851fee4409fca57c92c02dcaf67c01b6"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/traceability-auditor.md",
+      "scope": "workspace",
+      "sha": "2840f609bdfed14a961202c5f0685b78f160a5c0bc344857f39f4c412b7226bf"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/coverage-analyst.md",
+      "scope": "workspace",
+      "sha": "35f3d9960f08dbc9d07e97bf3e531be6c2159748bf551bc34ad52400168328a7"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/calibration-specialist.md",
+      "scope": "workspace",
+      "sha": "bccf919f5c0d44ffaa8f839a32be6038304c2733b631c823d56ca12878296038"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/hotspot-analyzer.md",
+      "scope": "workspace",
+      "sha": "829ba92ae37142fc5e496d7cf3d54081b80e85b594e7fa34d73c09b92271bafa"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/flake-adjudicator.md",
+      "scope": "workspace",
+      "sha": "70f20369ab459bd71450e9e331c076692565ac403cd40b3cfb91a000b18cc01f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/risk-scorer.md",
+      "scope": "workspace",
+      "sha": "b168b98090041f03d74e3f00787e3e12512f6bb502d484f58abafb2ce6be1ad4"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/memory-curator.md",
+      "scope": "workspace",
+      "sha": "5ebd1819bd1d1efe485c8c4d1541ce6a8f6e141956837a24bff4d7fd288cfd23"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/specialists/oracle-grader.md",
+      "scope": "workspace",
+      "sha": "19d938408cc8110716e9796fcbcfb971079330bad7d14eedf5f773e11798cb2f"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/agents/grader.md",
+      "scope": "workspace",
+      "sha": "e2c39e0afb6e4f3318ccafff953c77f7e01906482e46f1ee16ffa50c38edb0c9"
+    },
+    {
+      "action": "unchanged_owned",
+      "path": "/Users/jariushayes/Documents/FH6 Dashboard/.claude/worktrees/zealous-taussig-66872f/.claude/skills",
       "scope": "workspace",
       "sha": ""
     }

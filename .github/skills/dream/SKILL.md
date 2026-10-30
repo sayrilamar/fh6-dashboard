@@ -39,8 +39,11 @@ especially the `.github/instructions/*` rule files are read-only.
    present. In a **trial** install the memory store is local-only (hidden from
    git via `.git/info/exclude`), so there is no reviewable git diff to wait on
    — consolidate autonomously within the maturity tier. In a **committed**
-   install (or when no manifest exists), the store is tracked in git, so treat
-   the result as a reviewable diff and surface it as such in the report.
+   install (or when no manifest exists), the dreamed results — `MEMORY.md` and
+   `topics/*.md` — are tracked in git, so treat the result as a reviewable
+   diff and surface it as such in the report. `memory/logs/` and
+   `memory/.dream/` are never tracked in any mode, so nothing you write there
+   ever shows up in that diff.
 5. **Safety — sanity check, snapshot, open the provenance cycle.** This is the
    procedure `qi-foundation.instructions.md` > *Memory Poisoning Prevention*
    requires; it is not optional and it runs **before** you change any memory
@@ -141,9 +144,11 @@ index-vs-file contradictions, and reorder by relevance and recency. Update the
    `last_dream_utc` = now (ISO-8601 UTC) and `sessions_since_dream` = 0.
 4. Emit a **dream report** — 3–6 sentences: what was consolidated, updated, or
    pruned. If nothing needed changing, say *"memories already tight — no changes."*
-5. In a **committed** install, remind the user the changes are a git diff they
-   can review, edit, or revert. In a **trial** install, note the store is
-   local-only (hidden from git) and was updated in place.
+5. In a **committed** install, remind the user the changes to `MEMORY.md` and
+   `topics/` are a git diff they can review, edit, or revert (the reset counter
+   and the session logs are local-only and are not part of it). In a **trial**
+   install, note the store is local-only (hidden from git) and was updated in
+   place.
 
 ## Guardrails (non-negotiable)
 
