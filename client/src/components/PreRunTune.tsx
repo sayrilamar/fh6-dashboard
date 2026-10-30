@@ -5,6 +5,7 @@ import { solveGearing, finalDriveTarget, contextFromAnalytics } from '../gearing
 import { planForSession } from './Sessions';
 import { GROUP_LABEL, leverGroup } from '../plan';
 import { setPerRun, usePerRun } from '../perRun';
+import { unenteredChanges } from '../prerun';
 import { clampToLimit, markedLimit } from '../limits';
 import type { EventType, TuneSnapshot, TuneLimits } from '../types';
 import { EVENT_TYPES, defaultEventType } from '../events';
@@ -197,18 +198,16 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     return m;
   }, [plan]);
 
-  const differsFromRec = (key: string) => {
-    const r = recs[key];
-    if (r == null) return false;
-    const cur = vals[key] === '' || vals[key] == null ? null : Number(vals[key]);
-    return cur == null || Math.abs(cur - r) > 1e-9;
-  };
   // Only the planner's changes for this run are offered for one-click apply (one per lever
   // group, or one — FH6-30). Blocked levers are never offered — those are the ones
-  // already at a rail, or measured to have made the symptom worse.
-  const pending = (plan?.thisRun ?? [])
+  // already at a rail, or measured to have made the symptom worse. The same list is what
+  // "Confirm & record" asks about when a change isn't in its box yet (FH6-34).
+  const planned = (plan?.thisRun ?? [])
     .map((pc) => ({ pc, ch: channels.find((c) => c.key === pc.channel) ?? null }))
-    .filter((x) => x.ch && !blockedKeys.has(x.pc.channel) && differsFromRec(x.pc.channel));
+    .filter((x): x is { pc: typeof x.pc; ch: NonNullable<typeof x.ch> } => !!x.ch && !blockedKeys.has(x.pc.channel));
+  const unentered = unenteredChanges(planned.map(({ ch }) => ({ channel: ch.key, label: ch.label })), vals, recs);
+  const pending = planned.filter(({ pc }) => unentered.some((u) => u.channel === pc.channel));
+  const [askUnentered, setAskUnentered] = useState(false);
   const applyPlanned = () => {
     setVals((p) => {
       const next = { ...p };
@@ -220,10 +219,10 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
     });
   };
 
-  const snapshot = (): TuneSnapshot => {
+  const snapshot = (over: Record<string, string> = {}): TuneSnapshot => {
     const t: TuneSnapshot = {};
     for (const c of channels) {
-      const raw = vals[c.key];
+      const raw = over[c.key] ?? vals[c.key];
       if (raw == null || raw === '') continue;
       const n = Number(raw);
       if (Number.isFinite(n)) t[c.key] = n;
@@ -401,16 +400,35 @@ export function PreRunTune({ onConfirm, onCancel }: { onConfirm: (t: TuneSnapsho
         </div>
 
         <footer className="modal-foot">
-          <span className="modal-hint">
+          {!(askUnentered && unentered.length > 0) && <span className="modal-hint">
             Skipping is fine — but channels you leave blank can't learn a step size, so they keep the slower fixed nudge.
             Hit <b>MIN</b> or <b>MAX</b> on any lever that's already at that end of its in-game range — the report stops
             suggesting that direction and moves to the next lever.
-          </span>
-          <div className="modal-actions">
-            <button className="btn" onClick={onCancel}>Cancel</button>
-            <button className="btn" onClick={() => onConfirm({}, {}, eventType)}>Skip &amp; record</button>
-            <button className="btn rec" onClick={() => onConfirm(snapshot(), limits, eventType)}>Confirm &amp; record</button>
-          </div>
+          </span>}
+          {askUnentered && unentered.length > 0 ? (
+            <div className="note warn modal-confirm">
+              <span>
+                <b>{unentered.length === 1 ? "This run's planned change isn't" : `${unentered.length} of this run's planned changes aren't`} entered here:</b>
+                {unentered.map((u) => (
+                  <span key={u.channel}> · {u.label} <b>{u.entered ?? '—'}</b> → <b>{u.target}</b></span>
+                ))}
+                . Did you make {unentered.length === 1 ? 'it' : 'them'} in the game?
+              </span>
+              <div className="modal-actions">
+                <button className="btn" onClick={() => setAskUnentered(false)}>Back</button>
+                <button className="btn" onClick={() => onConfirm(snapshot(), limits, eventType)}>No, record as entered</button>
+                <button className="btn rec" onClick={() => onConfirm(snapshot(Object.fromEntries(unentered.map((u) => [u.channel, String(u.target)]))), limits, eventType)}>
+                  Yes, I made {unentered.length === 1 ? 'it' : 'them'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="modal-actions">
+              <button className="btn" onClick={onCancel}>Cancel</button>
+              <button className="btn" onClick={() => onConfirm({}, {}, eventType)}>Skip &amp; record</button>
+              <button className="btn rec" onClick={() => (unentered.length ? setAskUnentered(true) : onConfirm(snapshot(), limits, eventType))}>Confirm &amp; record</button>
+            </div>
+          )}
         </footer>
       </div>
     </div>

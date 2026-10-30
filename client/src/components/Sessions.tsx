@@ -2437,6 +2437,10 @@ function TuneVerdictBanner({ v }: { v: TuneVerdict }) {
   );
 }
 
+// Gearing channels aren't in CHANNELS (they're added per car), so the review note printed
+// "finalDrive 3.55 → 3.48" raw.
+const GEARING_LABEL: Record<string, string> = { finalDrive: 'Final drive', gearbox: 'Gear spacing (1st ÷ top)' };
+
 // One change-verdict note: did the change made before this run move its symptom?
 function LastChangeNote({ lc }: { lc: ChangeReview }) {
   const tone = lc.verdict === 'worked' ? 'info' : lc.verdict === 'backfired' ? 'crit' : 'warn';
@@ -2454,7 +2458,7 @@ function LastChangeNote({ lc }: { lc: ChangeReview }) {
         : 'That change is inconclusive';
   return (
     <div className={`note ${tone}`} style={{ marginBottom: 8 }}>
-      <b>{head} — {CHANNELS.find((c) => c.key === lc.channel)?.label ?? lc.channel} {lc.from} → {lc.to}</b>
+      <b>{head} — {CHANNELS.find((c) => c.key === lc.channel)?.label ?? GEARING_LABEL[lc.channel] ?? lc.channel} {lc.from} → {lc.to}</b>
       <div style={{ marginTop: 3, fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
         {lc.metricLabel}: {lc.before != null ? lc.before.toFixed(1) : '–'} → {lc.after != null ? lc.after.toFixed(1) : '–'}
         {arrow && <b style={{ color: lc.verdict === 'worked' ? 'var(--green)' : lc.verdict === 'backfired' ? 'var(--red)' : 'var(--muted)' }}> {arrow}</b>}
