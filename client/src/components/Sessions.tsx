@@ -10,6 +10,7 @@ import { solveGearing, landingsFor, finalDriveAdvice, contextFromAnalytics } fro
 import type { GearContext } from '../gearing';
 import type { Candidate, Plan } from '../plan';
 import { handlingDeltas, handlingMove } from '../handling';
+import type { MoveField } from '../handling';
 import { damperMove } from '../damping';
 
 // SINGLE SOURCE OF TRUTH for "what should I change".
@@ -23,15 +24,6 @@ const PlanCtx = createContext<Plan | null>(null);
 
 // The planner's target for a channel, so a section never prints a different number
 // from the Next Change card. Bisection lives in the planner; sections defer to it.
-// Label a move from the ACTUAL target rather than the old proportional delta. The two
-// diverge now that targets come from bisection: a row could show "+5%" beside a target
-// that was really a 27% cut.
-function moveLabel(from: number | null | undefined, to: number | null | undefined, held: boolean): string {
-  if (held || from == null || to == null) return 'hold';
-  if (from === 0) return to > 0 ? 'raise' : 'lower';
-  const pct = Math.round((to / from - 1) * 100);
-  return pct === 0 ? 'hold' : `${pct > 0 ? '+' : ''}${pct}%`;
-}
 
 // Plain function (not a hook) so it can be called inside .map() callbacks.
 const KNOWN_CHANNELS = new Set(CHANNELS.map((c) => c.key));
@@ -1363,6 +1355,8 @@ const RIDE_FIELDS: { key: keyof RideHeightSettings; label: string }[] = [
   { key: 'frontHeight', label: 'Front · Ride Height' },
   { key: 'rearHeight', label: 'Rear · Ride Height' },
 ];
+// Ride height moves by a % of the entered value, in FH6's 0.1 steps (FH6-22).
+const RIDE_MOVE: MoveField = { mode: 'pct', min: 0, step: 0.1 };
 
 // Median of a noisy per-run reading across every run at the SAME setting. A single run
 // can spike (one kerb strike put peak travel at 0.99 in 1 of 39 runs at a fixed height,
@@ -1467,9 +1461,8 @@ function rideHeightTarget(cur: RideHeightSettings, a: SessionAnalytics, plan?: P
     const planned = targetFromPlan(plan ?? null, f.key as string);
     if (planned != null) { out[f.key] = planned; continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const base = cur[f.key];
-    if (base == null) continue; // % change needs your current height
-    out[f.key] = Math.max(0, Math.round(base * (1 + dd.d / 100) * 10) / 10);
+    const { target } = handlingMove(RIDE_MOVE, cur[f.key], dd.d, null);
+    if (target != null) out[f.key] = target; // % change needs your current height
   }
   return out;
 }
@@ -1513,10 +1506,9 @@ function RideHeight({ s }: { s: SessionSummary }) {
         {RIDE_FIELDS.map((f) => {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
-          const held = dd.d === 0;
-          const target = plannedTarget(f.key) ?? (!held && curV != null ? Math.max(0, Math.round(curV * (1 + dd.d / 100) * 10) / 10) : (curV ?? null));
-          const dColor = held ? 'var(--muted)' : dd.d < 0 ? 'var(--amber)' : 'var(--blue)';
-          const deltaLabel = moveLabel(curV, target, held);
+          // Label, hold and colour describe the move to the final target (FH6-22).
+          const { target, label: deltaLabel, held, dir } = handlingMove(RIDE_MOVE, curV, dd.d, plannedTarget(f.key));
+          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
             <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
@@ -1688,6 +1680,8 @@ const AERO_FIELDS: { key: keyof AeroSettings; label: string }[] = [
   { key: 'frontAero', label: 'Front · Downforce' },
   { key: 'rearAero', label: 'Rear · Downforce' },
 ];
+// Downforce moves by a % of the entered value, in whole numbers (FH6-22).
+const AERO_MOVE: MoveField = { mode: 'pct', min: 0, step: 1 };
 const AERO_SHIFT = 0.05; // balance-shift magnitude that counts as speed-dependent
 
 function aeroDeltas(a: SessionAnalytics): Record<string, { d: number; why: string }> {
@@ -1719,9 +1713,8 @@ function aeroTarget(cur: AeroSettings, a: SessionAnalytics, plan?: Plan | null):
     const planned = targetFromPlan(plan ?? null, f.key as string);
     if (planned != null) { out[f.key] = planned; continue; }
     const dd = deltas[f.key]; if (!dd || dd.d === 0) continue;
-    const base = cur[f.key];
-    if (base == null) continue; // % change needs your current downforce
-    out[f.key] = Math.max(0, Math.round(base * (1 + dd.d / 100)));
+    const { target } = handlingMove(AERO_MOVE, cur[f.key], dd.d, null);
+    if (target != null) out[f.key] = target; // % change needs your current downforce
   }
   return out;
 }
@@ -1766,9 +1759,9 @@ function AeroBalance({ s }: { s: SessionSummary }) {
         {AERO_FIELDS.map((f) => {
           const dd = deltas[f.key] || { d: 0, why: '' };
           const curV = cur[f.key];
-          const held = dd.d === 0;
-          const target = plannedTarget(f.key) ?? (!held && curV != null ? Math.max(0, Math.round(curV * (1 + dd.d / 100))) : (curV ?? null));
-          const dColor = held ? 'var(--muted)' : 'var(--blue)';
+          // Label, hold and colour describe the move to the final target; a cut is amber (FH6-22).
+          const { target, label: deltaLabel, held, dir } = handlingMove(AERO_MOVE, curV, dd.d, plannedTarget(f.key));
+          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
             <div key={f.key} className={`note ${held ? 'info' : 'warn'}`} style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
@@ -1785,7 +1778,7 @@ function AeroBalance({ s }: { s: SessionSummary }) {
                   />
                   <span style={{ color: 'var(--muted)' }}>→</span>
                   <b style={{ color: dColor, minWidth: 40, textAlign: 'right' }}>{curV != null ? target : '—'}</b>
-                  <span style={{ color: dColor, fontSize: 11, minWidth: 38 }}>{moveLabel(curV, target, held)}</span>
+                  <span style={{ color: dColor, fontSize: 11, minWidth: 38 }}>{deltaLabel}</span>
                   <ChannelStatus channel={f.key} />
                 </span>
               </div>

@@ -96,24 +96,28 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
   return o;
 }
 
-// One row of the Alignment, ARB & Springs table: where the setting should go, and the
-// label for that move. The label, hold state and direction are derived from the FINAL
+// One row of the Alignment, ARB & Springs table, or of the Ride Height and Downforce rows
+// (FH6-22): where the setting should go, and the label for that move. The label, hold state and direction are derived from the FINAL
 // target, the planner's when it has one. The rows used to build all three from the
 // symptom's own step and then swap the planner's target in underneath them, so rear toe
 // read "0° → −0.3°" beside a "−0.1" label and front ARB "34.3 → 40" beside "+1.7"
 // (FH6-19). They also rounded ARB targets to whole numbers, holds included, so a held
 // 34.3 read "34, −0.3": the phantom move FH6-18 removed from the damping rows.
-export interface MoveField { mode: 'abs' | 'pct'; base: number; min?: number; max?: number }
+// `base` is the value an abs row assumes when nothing is entered; `step` is a pct row's
+// rounding (springs and downforce move in whole numbers, ride height in tenths).
+export interface MoveField { mode: 'abs' | 'pct'; base?: number; min?: number; max?: number; step?: number }
 export interface HandlingMove { target: number | null; label: string; held: boolean; dir: -1 | 0 | 1 }
 
 const sign = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 // qi-trace: work-item="FH6-19" acceptance-criteria="AC-1, AC-2, AC-3, AC-4" risk-tier="medium" test-coverage="tests/unit/handling-move.test.ts"
+// qi-trace: work-item="FH6-22" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/ride-aero-rows.test.ts"
 export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null): HandlingMove {
   if (f.mode === 'pct') {
-    // Springs move by a percentage of the current rate, so without one there is nothing
-    // to move from or to label.
-    const target = planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100))) : (cur ?? null));
+    // Springs, ride height and downforce move by a percentage of the current value, so
+    // without one there is nothing to move from or to label.
+    const k = 1 / (f.step ?? 1);
+    const target = planned ?? (d !== 0 && cur != null ? Math.max(f.min ?? 1, Math.round(cur * (1 + d / 100) * k) / k) : (cur ?? null));
     if (cur == null || target == null || target === cur) return { target, label: 'hold', held: true, dir: 0 };
     const dir = sign(target - cur);
     if (cur === 0) return { target, label: dir > 0 ? 'raise' : 'lower', held: false, dir };
@@ -123,6 +127,7 @@ export function handlingMove(f: MoveField, cur: number | undefined, d: number, p
     return { target, label, held: false, dir };
   }
   const base = cur ?? f.base;
+  if (base == null) return { target: planned, label: 'hold', held: true, dir: 0 };
   const target = planned ?? (d === 0 ? base : Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, r1(base + d))));
   const delta = r1(target - base);
   if (delta === 0) return { target, label: 'hold', held: true, dir: 0 };

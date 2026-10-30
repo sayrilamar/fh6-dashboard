@@ -6,8 +6,8 @@ labels: [tuning-report, testability]
 modules: [client/src/components/Sessions.tsx, client/src/handling.ts, tests/unit]
 depends_on: [FH6-19]
 created: 2026-10-29
-started: null
-completed: null
+started: 2026-10-29
+completed: 2026-10-29
 points: null
 estimate:
   id: fba12bda-6aad-40b7-9690-7c7ffa6db4da
@@ -85,3 +85,36 @@ Range **1–8** · confidence low · verdict estimable · anchor `5cf8628` (1): 
 
 Team fit: dev, plus QA (no QA slot). Bus factor: one deep slot on
 `client/src/components`. Full report: `story-estimate.md`.
+
+## Done (2026-10-29)
+
+- **`handlingMove()`'s `pct` mode** (`client/src/handling.ts`) takes an
+  optional rounding `step`. The default of 1 keeps springs exactly as they were.
+  `MoveField.base` is now optional, since `pct` rows have no baseline. A second
+  `qi-trace` marker names FH6-22 alongside FH6-19's (AC-1).
+- **`Sessions.tsx`:**
+  - `rideHeightTarget`, `aeroTarget`, `RideHeight` and `AeroBalance` all call
+    `handlingMove` with `RIDE_MOVE` (min 0, step 0.1) or `AERO_MOVE` (min 0,
+    step 1) (AC-1).
+  - Label, hold state and colour come from the final target. A downforce cut is
+    now drawn amber (AC-2).
+  - `moveLabel()` had no callers left and was removed.
+- **`tests/unit/ride-aero-rows.test.ts`:** 7 tests from the 2026-10-29 tune
+  (AC-3, AC-4). They reproduce the 6:09 PM targets and cover tenths vs whole
+  numbers, the floor at 0, exact holds, planned moves with zero delta, a
+  downforce cut, and no entered value.
+  - Suite: 74/74; build passes.
+  - Three mutants re-creating the old rows' faults each fail tests: hold
+    whenever the row's own delta is 0 (1), whole-number rounding for every
+    `pct` row (2), every move drawn as an increase (3).
+- **Live check (AC-5):** on the 6:09 PM run the targets are unchanged: front
+  height 4.5 (−15%), rear 4.8 (−14%), front downforce 138 (+15%), rear 225
+  (hold). The heights are now amber and front downforce blue. The spring rows
+  are still "hold" at 359.9 / 427, and the page shows no float noise.
+
+### Still open
+
+- The refinement question in Notes is unchanged: front downforce still shows
+  138 while blocked at the 120 maximum. Decide whether a blocked row should
+  show a target past its marked limit.
+
