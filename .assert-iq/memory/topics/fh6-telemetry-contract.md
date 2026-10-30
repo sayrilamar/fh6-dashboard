@@ -1,7 +1,8 @@
 # FH6 telemetry contract
 
 _Layer: Change risk / Outcome evidence. Source: live-console verification during
-the dashboard build sessions (2026-08-27 → 2026-08-30)._
+the dashboard build sessions (2026-08-27 → 2026-10-30). This is the base layer:
+other topics cite it, and it cites none of them._
 
 ## Packet format — verified against a live Xbox
 
@@ -20,12 +21,38 @@ the dashboard build sessions (2026-08-27 → 2026-08-30)._
   `speed=256 (m/s)`, `power=260 (W)`, `torque=264 (Nm)`,
   `tireTemp FL/FR/RL/RR = 268/272/276/280`, `boost=284 (PSI)`,
   `fuel=288 (fraction)`, `distanceTraveled=292 (m)`.
+- **Undecoded bytes are recorded raw since FH6-28** (2026-10-30): each frame
+  keeps `rawPlaceholder` (232–243, hex) and `rawTail` (byte 323 onward). First
+  reading, car #634 on a dirt event:
+  - The placeholder's first int32 read **32 in every frame**.
+  - Bytes 4–11 were non-zero in only 13 of 9,104 frames.
+  - The trailing byte was always 0.
+
+  Meaning unknown; it needs another car or event type to compare. The simulator
+  sends zeros there.
+- **No field names the event type, track or surface.** The driver labels the
+  event on the pre-run card instead (FH6-28, 2026-10-30).
 
 ## Units — verified
 
 - **Tire temps arrive as raw Fahrenheit**, not Celsius. Confirmed by plausibility
   check: 163–180 °F under 1 g cornering. Parser exposes both `tireTempF` (raw)
   and `tireTempC` (converted).
+- **FH6 sends one rear temperature for both rear wheels.** Rear-left equals
+  rear-right in 100% of frames on every car checked: #634 (RWD) on dirt and
+  tarmac, and a 1991 Mazda 787B (#1335, AWD) on tarmac. The fronts differ
+  (2.7–3.1 °F on average), so the parser's four offsets are right and the
+  duplication is in the game's data. (measured 2026-10-29 and 2026-10-30)
+- **Tire temperatures depend heavily on the surface.** Measured on car #634,
+  2026-10-29/30:
+  - **Dirt:** fronts sit around 70–90 °F and peak at 90–128 °F. No frame
+    reached 140 °F in 13 dirt runs.
+  - **Tarmac:** fronts typically read 136–137 °F, rears 143–145 °F, with peaks
+    of 142–179 °F.
+  - **Water:** `puddle` is per-wheel water depth. A crossing cools the tires
+    about 45 °F in 5 seconds.
+  - **Rumble:** `rumble` read 0 for whole runs on dirt and on tarmac, so it is
+    no surface signal, and the kerb filters keyed on it never fire.
 - **Speed is m/s** and confirmed correct: 45 m/s = 162 kph = 100 mph.
 - The dashboard is **imperial throughout** (converted 2026-08-28): m/s→mph
   ×2.2369, m→in ×39.3701, m→mi ÷1609.344, C→F ×9/5+32.
@@ -81,7 +108,8 @@ test.
   - toe-in: RL > 0 and RR < 0
   - toe-out: RL < 0 and RR > 0
 
-  This is how the toe sign was settled. See [[tuning-engine-conventions]].
+  This is how the toe sign was settled (the rule is in
+  tuning-engine-conventions.md).
 
 ## Known gaps in the telemetry itself
 

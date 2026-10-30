@@ -30,8 +30,8 @@ once._
     `handlingDeltas` logic, the `Sessions.tsx` help strings and convention
     comment, and the Rear · Toe baseline (`-0.1`, mild toe-in), and
     `tests/unit/handling.test.ts` pins it.
-  - **Change the sign only with a measurement like the one above.** See
-    [[recurring-defects]] § sign regressions.
+  - **Change the sign only with a measurement like the one above.** The
+    failure history is in recurring-defects.md § 3.
 
 ## Setting resolution
 
@@ -39,9 +39,28 @@ once._
   **0.1 steps**. A confirmed tune on 2026-10-29 read ARB 34.3 / 35.3, rebound
   8.7 / 10, and bump 5.4 / 7.2.
 - A target must keep those tenths. A row that says "hold" must return the
-  driver's entered value untouched. Fixed for the damper rows by FH6-18
-  (`damperMove()`) and for the alignment/ARB/spring rows by FH6-19
-  (`handlingMove()`), 2026-10-29. See [[recurring-defects]] § rounding.
+  driver's entered value untouched.
+- **Every Tuning Report row now goes through one tested function,** shared
+  with its next-run pre-fill (2026-10-29/30):
+  - `damperMove()` for the dampers (FH6-18)
+  - `handlingMove()` for everything else, given a field descriptor (mode,
+    base, min, max, step):
+    - alignment, ARB and springs (FH6-19)
+    - ride height and aero (FH6-22)
+    - tire pressure (FH6-23)
+    - diff and brakes (FH6-24); their limits live once in `client/src/rows.ts`
+
+  A planned target is labelled as the move to it. The rounding history is in
+  recurring-defects.md § 6.
+
+## Marked limits (MIN/MAX)
+
+- **A marked MIN or MAX is a hard threshold for every target** (FH6-25,
+  2026-10-29). The user's decision, after the downforce row showed 138 while
+  its marked maximum was 120: _"whatever is set as maximum should be the
+  threshhold. The same goes for when minimum is marked."_
+- `markedLimit` / `clampToLimit` (`client/src/limits.ts`) clamp the target.
+  When a mark blocks a lever, the planner sets `to = from`.
 - Open question (2026-10-29, FH6-16): should a consistent but tiny move near
   a metric's floor count as "backfired"? Rear rebound 11.6 → 10 moved its
   balance error 0.03 → 0.06 and now blocks softening. Undecided.
@@ -61,6 +80,44 @@ once._
   frames, so an `overall` label flips on one frame. A floor on that label put
   five front levers on the table from one frame in three thousand (removed
   2026-08-30, `f094163`).
+
+## Like-for-like runs: the event type
+
+- **Compare only runs of the same kind of event** (FH6-28, 2026-10-30). The
+  telemetry can't tell a dirt race from a road race. The user raised it after
+  a dirt-race analysis went wrong: _"is there a way for the app to know which
+  type of race is being recorded so that the tuning recommendations are more
+  accurate?"_
+- **The driver labels each run:** Road, Street, Dirt, Cross Country, Drag,
+  Drift or Free roam.
+  - The pre-run card asks, defaulting to this car's last labelled event.
+  - The Tuning Report's Event row relabels a past run.
+- **The rule:** `sameEventType()` in `client/src/events.ts`. An unlabelled run
+  matches anything, so old history still counts.
+- **Every history pool must apply it, not just the planner's `comparable()`.**
+  That means bisection, the next-run pre-fill, the race-time comparison, the
+  learned step (`learnGain`), the wrong-lever check, and pooled symptoms,
+  damping and ride height. Five of these were found still grouping by car
+  only after the first fix.
+- **Labels so far:** all 2026-10-29 runs are Dirt. On 2026-10-30 there are
+  five Dirt runs, four Road runs (car #634) and one Road run (Mazda 787B).
+
+## Measuring whether a lever does anything
+
+The method that settled tire pressure (FH6-27, 2026-10-30) and gear spacing
+(2026-08-29):
+
+- **Alternate A|B|A|B** on one car and one route, changing only that lever.
+  Alternating exposes run-order drift: turn-in gain fell 14.1 → 10.4 across
+  four runs whatever the pressure.
+- **Judge it with the planner's noise test.** Pool the runs at each setting;
+  the gap must clear 2 standard errors. With 2+2 runs only large effects show.
+- **Use the untouched axle as a control.** If its metric moves too, the run
+  changed, not the lever.
+- **Compare at matched conditions,** for example slip at the same lateral g,
+  not at "the limit".
+- **Confirm the tune on the pre-run card,** so each run records its own
+  settings ("Skip & record" saves none).
 
 ## One lever per run
 
@@ -109,14 +166,36 @@ Guards added on top of the formula (2026-08-29/30, verified on recorded runs):
   alternating A|B|A|B runs, ratios entered by hand): _"It seems the Box B
   (solver) was slightly faster, and I like that approach a lot better."_
 - Final drive is solved as a **scale relative to the recorded run's final
-  drive** — see [[recurring-defects]] § feedback loops.
+  drive**; recurring-defects.md § 2 has the feedback loop this prevents. The
+  pure target function is `finalDriveTarget()` in `client/src/gearing.ts`
+  (FH6-4, 2026-10-29).
 
-## Pressure, temperature, and lever exhaustion
+## Tire pressure and temperature
 
-- **Tire pressure is a grip / response lever, not a temperature lever.**
-  Measured directly: **+17.5 psi moved tire temp only +0.5 °F.** Any advice of
-  the form "raise pressure to bring temperature up" is unsound on FH6, and the
-  app's direction here was inverted. Confirmed across multiple sessions.
+- **In FH6, tire pressure moves neither tire temperature nor any measured grip
+  signal.** Measured on car #634 at front 26 | 34 | 26 | 34 psi with the rear
+  at 32 (FH6-27, 2026-10-30):
+  - **Tarmac:** the late-race front temperature moved +0.2 °F.
+  - **Dirt:** it moved −0.03 °F.
+  - **Grip:** understeer, balance, peak and p95 lateral g, grip μ, and slip
+    at matched lateral g did not move on either surface.
+  - **Earlier test:** this confirms 2026-08-03, when +17.5 psi moved the
+    temperature +0.5 °F.
+  - The older belief that pressure is "a grip / response lever" is not
+    supported by any measurement, and is dropped.
+- **Decision (FH6-26, 2026-10-30):**
+  - Pressure is manual and always holds, and the report shows tire
+    temperatures as information only.
+  - The planner never offers `frontPsi` / `rearPsi` (`MANUAL_ONLY` in
+    `client/src/plan.ts`).
+  - Do not reintroduce a temperature → pressure loop. The old one told every
+    road run "cold, lower 2 psi", which would have walked pressure to the
+    15 psi floor.
+- **Still unmeasured:** rear pressure's effect on traction. The wheelspin fix
+  text still suggests −1 to −2 psi rear.
+
+## Lever exhaustion
+
 - When the app declares _"Every lever for this symptom is used up"_, verify the
   lever list is actually complete before believing it. The user caught
   **brake pressure and brake force** missing from the braking-symptom lever set

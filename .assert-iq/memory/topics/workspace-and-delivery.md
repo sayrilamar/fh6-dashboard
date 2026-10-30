@@ -37,14 +37,25 @@ obvious from the code._
   wear. So a wear feature that works in the sim proves nothing about the
   console.
 
-## Test posture (re-checked 2026-10-29)
+## Test posture (re-checked 2026-10-30)
 
 - **A Vitest unit suite exists since 2026-10-29** (FH6-1, `a1c80c4`).
   - Tests live in `tests/unit/`. Run them from the repo root with
     `npm run test:unit`.
-  - 59 tests as of `e97b934`, covering the planner, bisection, handling and
-    toe sign, damper and alignment row math, the capture gate, gearing and the
-    parser.
+  - 127 tests in 16 files as of `f96a06e` (2026-10-30), covering:
+    - the planner, bisection, handling and toe sign
+    - every report row's math, and marked limits
+    - event types and like-for-like runs
+    - tire temperatures, the capture gate, gearing and the parser
+- **Every story is mutation-checked before it closes.** Each mutant is a
+  python replace in one file, followed by vitest and a restore. Each must
+  fail a test.
+- **Untestable today:**
+  - `Sessions.tsx` (no test imports it), so its rules are pulled into pure
+    modules: `rows.ts`, `limits.ts`, `events.ts`, `tires.ts`.
+  - The recorder: `SESSIONS_DIR` is fixed to the real `sessions/`, which
+    FH6-6 would fix. Until then, recorder checks run on a copy of `server/`
+    in a scratch folder with its own `sessions/`, fed by the simulator.
 - **There is still no CI** (no `.github/workflows/`) and no UI tests.
   Playwright is the *intended* UI framework per `.assert-iq/config.yaml`, but
   it is not wired up.
@@ -56,10 +67,19 @@ obvious from the code._
   run on a long straight, and same-car same-circuit runs alternating A|B|A|B
   with settings entered by hand (2026-08-29/30).
 - **Recordings land in whichever checkout runs the server.** `sessions/` is
-  resolved relative to `server/recorder.js`. On 2026-10-29 the server ran from
-  a Claude worktree, so the day's runs were in
-  `.claude/worktrees/<name>/sessions/`, and the main checkout's `sessions/`
-  was empty.
+  resolved relative to `server/recorder.js`. On 2026-10-29/30 the user ran
+  `npm start` in their Terminal tab from the Claude worktree, so the runs are
+  in `.claude/worktrees/<name>/sessions/` and the main checkout's `sessions/`
+  is empty.
+- **Server code changes need a restart, and the user's server is theirs.**
+  - On 2026-10-30 the auto-mode classifier refused the agent killing it
+    ("Interfere With Workloads").
+  - Instead, verify on a second instance: add a temporary `fh6-verify` entry
+    to `.claude/launch.json` (`PORT=8091 UDP_PORT=5391 node server/index.js`),
+    start it with preview_start, then revert the file.
+  - It shares the real `sessions/`, so back up `*.summary.json` first.
+  - A client rebuild (`client/dist`) is served by both servers.
+  - Afterwards, remind the user to restart `npm start`.
 
 ## Git and GitHub
 
@@ -70,13 +90,25 @@ obvious from the code._
 - **Commit only when the user says so** ("commit and push"). "Don't commit
   yet" means verify first. Confirmed across the 2026-08-29/30 and 2026-10-29
   sessions.
-- **Delivery since 2026-10-29:**
+- **"Start FH6-n"** means:
+  1. Mark the story started.
+  2. Implement and test it, including a mutation check.
+  3. Verify it in the live dashboard.
+  4. Write the Done section and move the story to `stories/done/`.
+  5. Leave everything uncommitted.
+- **"Commit and push" (delivery since 2026-10-29):**
   1. Commit per story on the session branch.
-  2. Open a PR with the `new-pull-request` skill, titled `[FH6-n] …`.
+  2. Open a PR, titled `[FH6-n] …`, with the `new-pull-request` body format.
   3. Fast-forward `main` locally to the PR's commits and push. GitHub then
      marks the PR merged.
+  4. Run the tests on `main`.
 
-  This was PRs #1–#3. There is no CI, and `main` is unprotected.
+  This was PRs #1–#13 by 2026-10-30. There is no CI, and `main` is
+  unprotected.
+- When one story's work also changed another story's file (FH6-27 updated
+  FH6-26), split the file's states into each story's commit, using
+  `git hash-object -w` plus `git update-index --cacheinfo`. New paths need
+  `--add`.
 - Early on 2026-10-29, Claude Code's auto-mode check blocked one agent
   `git push origin main`, and the user pushed by hand. The agent's later
   branch pushes and fast-forward pushes of `main` that day went through.
@@ -102,6 +134,16 @@ obvious from the code._
   checking which branch that checkout is on** — on 2026-10-29 it was sitting on
   a feature branch, and an interrupted upgrade from it left the workspace
   half-upgraded.
+- **Dream runtime is untracked on purpose** since pack `e93c955`:
+  `memory/logs/` and `memory/.dream/`. The user called these changes
+  intentional (2026-10-29). `MEMORY.md`, `topics/`, the snapshots and
+  `.assert-iq/dreaming/provenance.json` stay tracked.
+- **The session hooks write to the main checkout.** `.claude/settings.json`
+  sets `AIQ_PACK_ROOT` to `/Users/jariushayes/Documents/FH6 Dashboard`, so
+  session logs and the dream counter live in the main checkout even for
+  worktree sessions. The logs hold only turn-end stamps, no content.
+- **A worktree session can't Write/Edit in the main checkout** (a hook blocks
+  it). So `/dream` runs in the worktree, and its results reach `main` by commit.
 
 ## Live telemetry troubleshooting
 

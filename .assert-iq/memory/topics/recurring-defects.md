@@ -3,7 +3,7 @@
 _Layer: Signal trustworthiness. Failure clusters seen more than once — check
 these first when a symptom looks familiar._
 
-## 1. Parallel code paths drift apart (recurring, ≥6 occurrences)
+## 1. Parallel code paths drift apart (recurring, ≥9 occurrences, 2026-08-28 → 2026-10-30)
 
 The same recommendation or rule lives in more than one code path, a fix lands
 in one, and the others keep the old behavior.
@@ -26,10 +26,28 @@ in one, and the others keep the old behavior.
   - rear toe "→ −0.3°" beside "−0.1"
   - front ARB "→ 40" beside "+1.7"
 
-  `handlingMove()` (rows plus `handlingTarget()`) and `damperMove()` (damper
-  rows plus `dampingTarget()`) now make each report row and its pre-fill share
-  one function. The Ride Height and Aero rows still take "hold" from the
-  symptom's delta.
+  Since FH6-22/23/24 (2026-10-29), every report row and its pre-fill share one
+  function: `handlingMove()`, or `damperMove()` for the dampers. The brake and
+  diff limits are defined once, in `client/src/rows.ts`.
+- **A row ignored a marked limit** (2026-10-29, FH6-25). The user caught the
+  downforce row showing 138 while its marked maximum was 120. Marks now clamp
+  every target (`client/src/limits.ts`).
+- **A new rule reached one history consumer, not the rest** (2026-10-30,
+  FH6-28). The event-type check went into `comparable()`, bisection and the
+  pre-fill first. Five more pools still grouped runs by car only:
+  - the learned step
+  - the wrong-lever check
+  - pooled symptoms, damping and ride height
+
+  Mutation testing found them. When adding a "which runs count" rule, grep for
+  every `carOrdinal ===` filter.
+- **The same advice lived outside the code the story named** (2026-10-30,
+  FH6-26). The temperature → pressure advice was in:
+  - `tireDeltas`
+  - the planner
+  - the live engineer notes (`server/metrics.js`)
+  - three issue fix texts
+  - the trigger text stored in old recordings
 
 **Typical tell:** a relative number sitting beside an absolute one — a stale
 *proportional delta* (`+9%`, `dd.d}%`) next to a bisection-derived absolute
@@ -118,5 +136,31 @@ resolution). Code that rounds or subtracts them carelessly fails two ways:
 - A hold returns the entered value untouched.
 - Round targets to 0.1, and round every displayed delta.
 - After a change, check the rendered report text for `\d\.\d{6,}`.
+
+## 7. Conclusions drawn from confounded data (3 occurrences, 2026-08-30 → 2026-10-30)
+
+A pattern in the data was read as cause and effect while something else moved
+with it:
+
+- **Toe sign (2026-08-30).** A correlation over runs that each moved up to 15
+  channels (§ 3).
+- **Tire temperature "follows speed, not slip" (2026-10-29), retracted.** Every
+  run that day was a rally car in a dirt race, and the analysis didn't know
+  it. A water crossing early in the route, at low speed, cooled the tires
+  about 45 °F, and they warmed through the faster later sections. The user
+  corrected it: _"all of my runs yesterday were with a rally car racing in a
+  dirt race … I think that should be considered so that you don't make the
+  wrong assumptions."_ That led to FH6-28.
+- **Dirt "front slip at the limit" fell at higher pressure (2026-10-30, FH6-27).**
+  The untouched rear fell too, and at matched lateral g the gap vanished. It
+  was cornering intensity, not the tire.
+
+**Rules:**
+- Ask what the event and surface were before interpreting a run.
+  `meta.eventType` records it since FH6-28.
+- Use the method in tuning-engine-conventions.md § Measuring whether a lever
+  does anything: alternate A|B|A|B, use a control, and compare at matched
+  conditions.
+- Say plainly when a claim is withdrawn.
 
 Telemetry facts behind these: [[fh6-telemetry-contract]]

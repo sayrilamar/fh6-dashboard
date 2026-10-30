@@ -93,6 +93,29 @@
       },
       "regression": null,
       "memory_changed": true
+    },
+    {
+      "cycle_id": "dream-20261030T171017Z",
+      "status": "completed",
+      "started_at": "2026-10-30T17:10:17.421426Z",
+      "completed_at": "2026-10-30T17:13:49.690190Z",
+      "maturity_tier": "early",
+      "memory_version_before": "sha256-v2:9d35b3039583741ca8a615fd4a4a94155833eb4a13f6c9a754789ce087d8a1d2",
+      "memory_version_after": "sha256-v2:706ccb1784d9fcbcee76f06ef842f4e856121cfcba4f8f0915963ed74958acdf",
+      "snapshot": ".assert-iq/dreaming/.snapshots/mem-20261030T171017Z.tar.gz",
+      "sanity": {
+        "clean": false,
+        "topics": 4,
+        "issues": 2,
+        "detail": {
+          "cycles": 2,
+          "stale_topics": 0,
+          "contradictions": 0,
+          "granularity": 0
+        }
+      },
+      "regression": null,
+      "memory_changed": true
     }
   ]
 }
