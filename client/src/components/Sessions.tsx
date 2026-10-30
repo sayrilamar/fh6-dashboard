@@ -12,7 +12,7 @@ import type { Candidate, ChangeReview, Plan, PerRun, PlannedChange, TuneVerdict 
 import { usePerRun } from '../perRun';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
-import { brakeDiagnosis, brakeMove, diffMove } from '../rows';
+import { brakeAdvice, brakeMove, diffMove } from '../rows';
 import { damperMove } from '../damping';
 import { clampToLimit, markedLimit } from '../limits';
 import { EVENT_TYPES, eventLabel, sameEventType } from '../events';
@@ -51,16 +51,26 @@ function targetFromPlan(plan: Plan | null, channel: string): number | null {
   return hit?.to ?? null;
 }
 
+// When this run's change for a lever is a way back from a backfired change, its row says
+// why, not the section's own reading: brake balance 52 → 55 read "shift balance REARWARD"
+// beside a forward move (FH6-35).
+function recoveryWhy(plan: Plan | null, channel: string): string | null {
+  const c = plan?.thisRun.find((x) => x.channel === channel);
+  return c?.kind === 'recovery' ? c.why : null;
+}
+
 // Status of one channel according to the planner, rendered inline beside its row.
 function ChannelStatus({ channel }: { channel: string }) {
   const plan = useContext(PlanCtx);
   if (!plan) return null;
+  // This run's change wins over a block: a lever blocked in one direction can still be
+  // this run's way back in the other (brake balance 52 → 55, FH6-35).
+  if (plan.thisRun.some((c) => c.channel === channel)) {
+    return <span className="chip go">{plan.thisRun.length > 1 ? '← change this run' : '← change this one'}</span>;
+  }
   const blocked = plan.blocked.find((b) => b.channel === channel);
   if (blocked) {
     return <span className="chip crit" title={blocked.blocked}>blocked · {blocked.blocked!.split('—')[0].trim()}</span>;
-  }
-  if (plan.thisRun.some((c) => c.channel === channel)) {
-    return <span className="chip go">{plan.thisRun.length > 1 ? '← change this run' : '← change this one'}</span>;
   }
   if (plan.queued.some((q) => q.channel === channel)) {
     const why = plan.perRun === 'group'
@@ -571,63 +581,8 @@ function ChassisCG({ s }: { s: SessionSummary }) {
   );
 }
 
-// Brake pressure + balance from measured per-axle slip (100% = lockup). Target
-// is threshold braking: both axles just under 100%, together.
+// Brake pressure + balance rows; the advice itself is brakeAdvice() in rows.ts.
 interface BrakeInputs { balance?: number; pressure?: number }
-
-function brakeAdvice(a: SessionAnalytics) {
-  const f = a.diff.brakeSlipFrontPct;
-  const r = a.diff.brakeSlipRearPct;
-  if (f == null || r == null) return null;
-  const R = (n: number) => Math.round(n);
-  const cl = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
-  const maxSlip = Math.max(f, r);
-  const gap = f - r;
-
-  // PRESSURE vs BALANCE ARE DIFFERENT QUESTIONS — don't judge both on the same number.
-  // Pressure asks "can the car reach the limit at all?"; balance asks "do the two axles
-  // reach it together?". Judging pressure on max(front, rear) meant a pure BALANCE fault
-  // — one axle locking while the other barely slipped — also dragged pressure down.
-  // So: lower pressure only when BOTH axles are past the limit (minSlip), and raise it
-  // when NEITHER axle reaches it (maxSlip). A one-axle split is balance's job alone.
-  const minSlip = Math.min(f, r);
-  let press = { d: 0, why: `one axle reaches the limit and the other doesn't (${f}% vs ${r}%) — that's a balance split, not a pressure problem` };
-  if (maxSlip < 70) press = { d: R(cl((80 - maxSlip) / 2, 3, 15)), why: `neither axle reaches the limit (${f}% / ${r}%) — RAISE pressure to actually use the grip` };
-  else if (maxSlip < 82) press = { d: R(cl((85 - maxSlip) / 2, 2, 6)), why: `just under the limit (${f}% / ${r}%) — a touch more pressure reaches threshold` };
-  else if (minSlip > 108) press = { d: -R(cl((minSlip - 100) / 3, 3, 12)), why: `both axles past the limit (${f}% / ${r}%) — LOWER pressure to threshold-brake` };
-  else if (minSlip >= 82 && maxSlip <= 108) press = { d: 0, why: `both axles sit at threshold (${f}% / ${r}%) — pressure looks right` };
-
-  let bal = { d: 0, why: 'both axles reach the limit together — balance looks right' };
-  if (maxSlip >= 80) {
-    if (gap > 15) bal = { d: -R(cl(gap / 6, 2, 6)), why: `fronts lock first (${f}% vs ${r}%) — shift balance REARWARD (less front %) so both lock together` };
-    else if (gap < -15) bal = { d: R(cl(-gap / 6, 2, 6)), why: `rears lock first (${r}% vs ${f}%) — twitchy entry; shift balance FORWARD (more front %)` };
-  }
-
-  // Straight-line slip alone is too blunt a test for trail-braking. A car can sit
-  // inside the ±15% gap and still step out every time you brake INTO a corner, because
-  // the rear is closer to lockup than the front while it's also being asked for
-  // cornering grip. When the measured handling says the rear goes away under braking,
-  // brake balance and pressure ARE live levers — previously both read 0 here and were
-  // never even offered, which made the planner wrongly declare "no levers left".
-  const h = a.handling;
-  const trailRate = h?.slideCausePer1k.trailBrake ?? 0;
-  const rearLooseOnBrakes = h?.brakeStability === 'rear-loose' || trailRate >= 3;
-  if (rearLooseOnBrakes && bal.d === 0 && gap <= 0) {
-    bal = { d: R(cl(2 + trailRate / 4, 2, 6)), why: `rear steps out under braking (${trailRate}/1k) and is nearer lockup than the front (${r}% vs ${f}%) — shift balance FORWARD (more front %) to stabilise entry` };
-  }
-  // Same separation as above: only reach for PRESSURE once the axles are actually close
-  // together. With a wide split the rear is going away because the balance is rear-biased,
-  // and cutting pressure just makes the car slower into the corner without fixing it —
-  // that is what walked pressure down to 33% while the real fault was balance.
-  if (rearLooseOnBrakes && press.d === 0 && maxSlip >= 88 && Math.abs(gap) <= 15) {
-    press = { d: -R(cl((maxSlip - 80) / 3, 2, 8)), why: `rear goes away under braking with an axle at the limit (${f}% / ${r}%) — LOWER pressure so trail-braking doesn't tip the rear over the limit` };
-  }
-
-  const { diagnosis, level } = brakeDiagnosis(f, r);
-
-  return { f, r, diagnosis, level, bal, press };
-}
-
 
 function brakeTarget(cur: BrakeInputs, a: SessionAnalytics, dt: string, plan?: Plan | null, lim?: LimitOf): BrakeInputs {
   const adv = brakeAdvice(a);
@@ -710,7 +665,7 @@ function BrakeRec({ s }: { s: SessionSummary }) {
                   <ChannelStatus channel={row.k} />
                 </span>
               </div>
-              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{row.dd.why}{inp[row.k] == null ? ` · baseline ${move.base}%` : ''}</div>
+              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{recoveryWhy(plan, row.k) ?? row.dd.why}{inp[row.k] == null ? ` · baseline ${move.base}%` : ''}</div>
             </div>
           );
         })}

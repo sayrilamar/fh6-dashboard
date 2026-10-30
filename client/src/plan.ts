@@ -565,6 +565,11 @@ export function buildPlan(
         }
       }
     }
+    // qi-trace: work-item="FH6-35" acceptance-criteria="AC-2" risk-tier="medium" test-coverage="tests/unit/brake-compromise.test.ts"
+    // A blocked lever stays where it is: its row reads "hold". Leaving the bisection's
+    // target in place showed "→ 34 %, blocked" on a brake balance the planner would never
+    // move (FH6-35). FH6-25 did the same for marked limits.
+    if (blocked && from != null) to = from;
     return { ...c, from, to, rank, blocked, bracket, runsLeft };
   };
 
@@ -595,11 +600,18 @@ export function buildPlan(
     if (e.review?.verdict !== 'backfired') continue;
     if (tune == null || typeof tune[e.channel] !== 'number') continue;
     const cur = tune[e.channel];
-    // Still at (or beyond) the value that made things worse?
-    const worseSide = e.dir > 0 ? cur >= e.to - 1e-9 : cur <= e.to + 1e-9;
+    // qi-trace: work-item="FH6-35" acceptance-criteria="AC-4" risk-tier="high" test-coverage="tests/unit/brake-compromise.test.ts"
+    // Still past where it started, in the direction that made things worse? Values between
+    // the start and the end are the range FH6-32 blocks moves into, so a car sitting there
+    // is offered the way back too: brake balance 52 after 55 → 41 made the rear step out
+    // had no way back to 55 (FH6-35).
+    const worseSide = e.dir > 0 ? cur > e.from + 1e-9 : cur < e.from - 1e-9;
     if (!worseSide) continue;
     if (blocked.some((b) => b.channel === e.channel && b.blocked?.includes('in-game limit'))) continue;
     if (open.some((o) => o.channel === e.channel)) continue;
+    // One way back per lever: the FH6-30 validation ran 55 → 41 twice, and each backfire
+    // offered "52 → 55", once in this run and again in the queue (FH6-35).
+    if (recoveries.some((r) => r.channel === e.channel)) continue;
     const ch = CH.get(e.channel);
     recoveries.push({
       channel: e.channel,
