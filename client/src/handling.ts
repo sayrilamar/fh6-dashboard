@@ -98,16 +98,17 @@ export function handlingDeltas(a: SessionAnalytics): Record<string, { d: number;
   return o;
 }
 
-// One row of the Alignment, ARB & Springs table, or of the Ride Height and Downforce rows
-// (FH6-22): where the setting should go, and the label for that move. The label, hold state and direction are derived from the FINAL
+// One Tuning Report row: alignment, ARB, springs, ride height, downforce (FH6-22), tire
+// pressure (FH6-23), diff and brakes (FH6-24). Returns where the setting should go and the
+// label for that move. The label, hold state and direction are derived from the FINAL
 // target, the planner's when it has one. The rows used to build all three from the
 // symptom's own step and then swap the planner's target in underneath them, so rear toe
 // read "0° → −0.3°" beside a "−0.1" label and front ARB "34.3 → 40" beside "+1.7"
 // (FH6-19). They also rounded ARB targets to whole numbers, holds included, so a held
 // 34.3 read "34, −0.3": the phantom move FH6-18 removed from the damping rows.
 // `base` is the value an abs row assumes when nothing is entered. `step` is the rounding a
-// moved target lands on: abs rows default to FH6's 0.1 (tire pressure uses 0.5), pct rows
-// to whole numbers (ride height uses 0.1). A hold is never rounded.
+// moved target lands on: abs rows default to FH6's 0.1 (tire pressure uses 0.5, diff and
+// brakes 1), pct rows to whole numbers (ride height uses 0.1). A hold is never rounded.
 export interface MoveField { mode: 'abs' | 'pct'; base?: number; min?: number; max?: number; step?: number }
 export interface HandlingMove { target: number | null; label: string; held: boolean; dir: -1 | 0 | 1 }
 
@@ -120,6 +121,7 @@ const roundTo = (n: number, step: number) => { const k = 1 / step; return Math.r
 // qi-trace: work-item="FH6-22" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/ride-aero-rows.test.ts"
 // qi-trace: work-item="FH6-25" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="high" test-coverage="tests/unit/limits.test.ts"
 // qi-trace: work-item="FH6-23" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/tire-pressure-rows.test.ts"
+// qi-trace: work-item="FH6-24" acceptance-criteria="AC-1, AC-2, AC-3" risk-tier="medium" test-coverage="tests/unit/diff-brake-rows.test.ts"
 // `limit` is the driver's MIN/MAX mark, if any: no target goes past it (FH6-25).
 export function handlingMove(f: MoveField, cur: number | undefined, d: number, planned: number | null, limit?: MarkedLimit): HandlingMove {
   if (f.mode === 'pct') {

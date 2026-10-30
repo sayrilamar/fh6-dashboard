@@ -11,6 +11,7 @@ import type { GearContext } from '../gearing';
 import type { Candidate, Plan } from '../plan';
 import { handlingDeltas, handlingMove } from '../handling';
 import type { MoveField } from '../handling';
+import { brakeMove, diffMove } from '../rows';
 import { damperMove } from '../damping';
 import { clampToLimit, markedLimit } from '../limits';
 import type { LimitOf } from '../limits';
@@ -415,10 +416,9 @@ function diffTarget(cur: DiffSettings, a: SessionAnalytics, fields: { key: keyof
   const out: DiffSettings = { ...cur };
   for (const f of fields) {
     const planned = targetFromPlan(plan ?? null, f.key as string);
-    if (planned != null) { out[f.key] = clampToLimit(planned, lim?.(f.key as string)); continue; }
-    const dd = deltas[f.key]; if (!dd) continue;
-    const base = cur[f.key] ?? f.base;
-    out[f.key] = clampToLimit(Math.max(0, Math.min(100, Math.round(base + dd.d))), lim?.(f.key));
+    const dd = deltas[f.key];
+    if (planned == null && !dd) continue;
+    out[f.key] = handlingMove(diffMove(f), cur[f.key], dd?.d ?? 0, planned, lim?.(f.key)).target as number;
   }
   return out;
 }
@@ -461,13 +461,12 @@ function DiffRecommendation({ s }: { s: SessionSummary }) {
       </div>
       <div className="notes" style={{ marginTop: 6 }}>
         {fields.map((f) => {
-          const base = cur[f.key] ?? f.base;
           const dd = deltas[f.key] || { d: 0, why: '', gain: null as Gain | null, naive: 0 };
-          const target = clampToLimit(plannedTarget(f.key) ?? Math.max(0, Math.min(100, Math.round(base + dd.d))), limitOf(s)(f.key));
-          const delta = target - base;
-          const dColor = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
+          // Same rule and limits as the pre-fill (FH6-24).
+          const { target, label: deltaLabel, held, dir } = handlingMove(diffMove(f), cur[f.key], dd.d, plannedTarget(f.key), limitOf(s)(f.key));
+          const dColor = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
-            <div key={f.key} className="note info" style={{ borderLeftColor: delta === 0 ? 'var(--line)' : dColor }}>
+            <div key={f.key} className="note info" style={{ borderLeftColor: held ? 'var(--line)' : dColor }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
                 <b>{f.label}</b>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontVariantNumeric: 'tabular-nums' }}>
@@ -481,7 +480,7 @@ function DiffRecommendation({ s }: { s: SessionSummary }) {
                   />
                   <span style={{ color: 'var(--muted)' }}>→</span>
                   <b style={{ color: dColor, minWidth: 36, textAlign: 'right' }}>{target}%</b>
-                  <span style={{ color: dColor, fontSize: 11, minWidth: 34 }}>{delta === 0 ? 'hold' : delta > 0 ? `+${delta}` : delta}</span>
+                  <span style={{ color: dColor, fontSize: 11, minWidth: 34 }}>{deltaLabel}</span>
                   <ChannelStatus channel={f.key} />
                 </span>
               </div>
@@ -624,20 +623,16 @@ function brakeAdvice(a: SessionAnalytics) {
   return { f, r, diagnosis, level, bal, press };
 }
 
-const brakeBalBase = (dt: string) => (dt === 'FWD' ? 66 : dt === 'AWD' ? 60 : 58);
 
 function brakeTarget(cur: BrakeInputs, a: SessionAnalytics, dt: string, plan?: Plan | null, lim?: LimitOf): BrakeInputs {
   const adv = brakeAdvice(a);
   if (!adv) return cur;
-  return {
-    // Channel keys are 'balance'/'pressure' — matching CHANNELS in tune.ts and the
-    // playbook in plan.ts. Naming these 'brakeBalance'/'brakePressure' here silently
-    // missed the plan on every lookup and fell through to the proportional value.
-    balance: clampToLimit(targetFromPlan(plan ?? null, 'balance')
-      ?? Math.max(0, Math.min(100, Math.round((cur.balance ?? brakeBalBase(dt)) + adv.bal.d))), lim?.('balance')),
-    pressure: clampToLimit(targetFromPlan(plan ?? null, 'pressure')
-      ?? Math.max(50, Math.min(200, Math.round((cur.pressure ?? 100) + adv.press.d))), lim?.('pressure')),
-  };
+  // Channel keys are 'balance'/'pressure' — matching CHANNELS in tune.ts and the
+  // playbook in plan.ts. Naming these 'brakeBalance'/'brakePressure' here silently
+  // missed the plan on every lookup and fell through to the proportional value.
+  const move = (k: 'balance' | 'pressure', d: number) =>
+    handlingMove(brakeMove(k, dt), cur[k], d, targetFromPlan(plan ?? null, k), lim?.(k)).target as number;
+  return { balance: move('balance', adv.bal.d), pressure: move('pressure', adv.press.d) };
 }
 
 function BrakeRec({ s }: { s: SessionSummary }) {
@@ -665,10 +660,9 @@ function BrakeRec({ s }: { s: SessionSummary }) {
     } catch { /* ignore */ }
   };
 
-  const balBase = brakeBalBase(dt);
   const rows = [
-    { k: 'balance' as const, label: 'Brake Balance (% front)', base: balBase, dd: adv.bal, lo: 0, hi: 100 },
-    { k: 'pressure' as const, label: 'Brake Pressure (%)', base: 100, dd: adv.press, lo: 50, hi: 200 },
+    { k: 'balance' as const, label: 'Brake Balance (% front)', dd: adv.bal },
+    { k: 'pressure' as const, label: 'Brake Pressure (%)', dd: adv.press },
   ];
 
   return (
@@ -688,12 +682,12 @@ function BrakeRec({ s }: { s: SessionSummary }) {
       </div>
       <div className="notes" style={{ marginTop: 6 }}>
         {rows.map((row) => {
-          const base = inp[row.k] ?? row.base;
-          const target = clampToLimit(plannedTarget(row.k) ?? Math.max(row.lo, Math.min(row.hi, Math.round(base + row.dd.d))), limitOf(s)(row.k));
-          const delta = target - base;
-          const c = delta < 0 ? 'var(--amber)' : delta > 0 ? 'var(--blue)' : 'var(--muted)';
+          // Same rule, limits and baseline as the pre-fill (FH6-24).
+          const move = brakeMove(row.k, dt);
+          const { target, label, held, dir } = handlingMove(move, inp[row.k], row.dd.d, plannedTarget(row.k), limitOf(s)(row.k));
+          const c = held ? 'var(--muted)' : dir < 0 ? 'var(--amber)' : 'var(--blue)';
           return (
-            <div key={row.k} className="note info" style={{ borderLeftColor: delta === 0 ? 'var(--line)' : c }}>
+            <div key={row.k} className="note info" style={{ borderLeftColor: held ? 'var(--line)' : c }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
                 <b>{row.label}</b>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontVariantNumeric: 'tabular-nums' }}>
@@ -702,16 +696,16 @@ function BrakeRec({ s }: { s: SessionSummary }) {
                     style={{ width: 52, textAlign: 'right' }}
                     type="number"
                     value={inp[row.k] ?? ''}
-                    placeholder={String(row.base)}
+                    placeholder={String(move.base)}
                     onChange={(e) => update(row.k, e.target.value)}
                   />
                   <span style={{ color: 'var(--muted)' }}>→</span>
                   <b style={{ color: c, minWidth: 40, textAlign: 'right' }}>{target}{row.k === 'balance' ? '%' : '%'}</b>
-                  <span style={{ color: c, fontSize: 11, minWidth: 34 }}>{delta === 0 ? 'hold' : delta > 0 ? `+${delta}` : delta}</span>
+                  <span style={{ color: c, fontSize: 11, minWidth: 34 }}>{label}</span>
                   <ChannelStatus channel={row.k} />
                 </span>
               </div>
-              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{row.dd.why}{inp[row.k] == null ? ` · baseline ${row.base}%` : ''}</div>
+              <div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 11 }}>{row.dd.why}{inp[row.k] == null ? ` · baseline ${move.base}%` : ''}</div>
             </div>
           );
         })}

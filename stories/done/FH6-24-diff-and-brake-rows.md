@@ -3,11 +3,11 @@ id: FH6-24
 title: Give the diff and brake rows one rule each, with limits defined once
 type: chore
 labels: [refactor, testability, tuning-report]
-modules: [client/src/components/Sessions.tsx, tests/unit]
+modules: [client/src/rows.ts, client/src/handling.ts, client/src/components/Sessions.tsx, tests/unit]
 depends_on: [FH6-19]
 created: 2026-10-29
-started: null
-completed: null
+started: 2026-10-29
+completed: 2026-10-29
 points: null
 estimate:
   id: 1aa495a9-3624-4d03-99da-2934b36cde03
@@ -77,3 +77,42 @@ Range **1–8** · confidence low · verdict estimable · anchor `5cf8628` (1): 
 
 Team fit: dev, plus QA (no QA slot). Bus factor: one deep slot on
 `client/src/components`. Full report: `story-estimate.md`.
+
+## Done (2026-10-29)
+
+- **New pure module `client/src/rows.ts`** defines each section's rounding,
+  limits and baseline once (AC-1, AC-3). It carries a `qi-trace` marker.
+  - `diffMove(f)`: whole percent, 0–100, the field's baseline.
+  - `brakeMove(k, dt)`: balance 0–100% front with `brakeBalBase(dt)`
+    (moved here) as its baseline; pressure 50–200% with a baseline of 100.
+    Both are whole percent.
+- **`Sessions.tsx`:** `diffTarget`, `DiffRecommendation`, `brakeTarget` and
+  `BrakeRec` all call `handlingMove()` with those descriptors (AC-1).
+  - The brake rows no longer declare their own `lo`/`hi`/`base`.
+  - Labels and colours come from the final target. A hold keeps the entered
+    value, and a planned target is labelled as the move (AC-2).
+  - MIN/MAX marks (FH6-25) still apply.
+- **`handlingMove`** gets an FH6-24 `qi-trace` line and a tidied header
+  comment. Its behaviour is unchanged; it already took a `step` from FH6-23.
+- **`tests/unit/diff-brake-rows.test.ts`:** 7 tests from the 2026-10-29 tune
+  (balance 41, pressure 100, rear accel 32, rear decel 100). They import the
+  real descriptors from `rows.ts` (AC-4).
+  - Suite: 98/98; build passes.
+  - Five mutants each fail a test: pressure max 200 → 150, diff max
+    100 → 99, RWD balance baseline 58 → 60, whole percent → tenths, and
+    rounding a hold (the old inline behaviour).
+- **Live check, 6:09 PM run (AC-5):**
+
+  | Row | Target | Label |
+  |---|---|---|
+  | Brake balance | 50 | +9, queued |
+  | Pressure | 102 | +2 |
+  | Rear accel | 32 | hold |
+  | Rear decel | 100 | hold |
+
+  The baselines (58 / 100 / 50 / 15) and the saved next-run values
+  (`{balance: 50, pressure: 102}`, `{rearAccel: 32, rearDecel: 100}`) are
+  unchanged, and the page shows no float noise.
+- **Only behaviour change:** a non-whole entry such as 32.5 is now held
+  exactly. Before, it was rounded to 33 and shown as "+0.5".
+
